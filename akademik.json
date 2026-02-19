@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "nama": "Siga",
+    "label": "Link Siga Untad",
+    "url": "https://siga-8.untad.ac.id/"
+  },
+  {
+    "id": 2,
+    "nama": "LMS",
+    "label": "Link LMS Untad",
+    "url": "https://lmsvibelfatek-untad.com/login"
+  }
+]
