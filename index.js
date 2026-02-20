@@ -569,6 +569,32 @@ async function removeBackground(imageBuffer) {
 }
 
 // ============== WHATSAPP CLIENT ==============
+// ============== UPSCALE IMAGE (CLIPDROP) ==============
+async function upscaleImage(imageBuffer) {
+    const FormData = require('form-data');
+
+    const form = new FormData();
+    form.append('image_file', imageBuffer, {
+        filename: 'image.png',
+        contentType: 'image/png'
+    });
+    form.append('target_width', 2048);
+    form.append('target_height', 2048);
+
+    const res = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', form, {
+        headers: {
+            ...form.getHeaders(),
+            'x-api-key': process.env.CLIPDROP_API_KEY
+        },
+        responseType: 'arraybuffer',
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+    });
+
+    return Buffer.from(res.data);
+}
+
+// ============== WHATSAPP CLIENT ==============
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
@@ -899,10 +925,10 @@ async function handleCommand(msg) {
                     if (stikerMedia) {
                         await kirimStiker(client, msg.from, msg, stikerMedia);
                     } else {
-                        msg.reply('Aiih gagal nih, coba lagi jo 😹');
+                        msg.reply('Aiih gagal nih, coba lagi yaa 😹');
                     }
                 } else {
-                    msg.reply('Reply-nya bukan foto/GIF ee. Coba reply gambar dulu 😹');
+                    msg.reply('Reply-nya bukan foto/GIF. Coba reply gambar dulu 😹');
                 }
             } catch (e) {
                 console.error('Error stiker:', e.message);
@@ -919,7 +945,7 @@ async function handleCommand(msg) {
         try {
             const quoted = await msg.getQuotedMessage();
             if (!quoted.hasMedia) {
-                return msg.reply('Itu bukan video ee 😹 Reply ke video dokumennya jo');
+                return msg.reply('Itu bukan video 😹 Reply ke video dokumennya yaa');
             }
             const tipe = quoted.type;
             const mime = quoted._data?.mimetype || '';
@@ -927,14 +953,14 @@ async function handleCommand(msg) {
             const isVideoDoc = tipe === 'video' || tipe === 'document' ||
                 mime.startsWith('video/') || /\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename);
             if (!isVideoDoc) {
-                return msg.reply('Nd bisa ee, harus video atau dokumen video 😹');
+                return msg.reply('Nda bisa yaa, harus video atau dokumen video 😹');
             }
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply('Oke bentar sy optimize videonya dulu ee 🤭 sabar jo...');
+            await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
             const media = await quoted.downloadMedia();
-            if (!media) return msg.reply('Gagal download videonya 😹 coba lagi jo');
+            if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
 
             const os = require('os');
             const ts = Date.now();
@@ -948,7 +974,7 @@ async function handleCommand(msg) {
                 const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
                 await client.sendMessage(uid, optimizedMedia, {
                     sendMediaAsDocument: false,
-                    caption: 'Nih videonya ee 🤭 kualitas tinggi, tinggal download trus upload ke story!'
+                    caption: 'Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!'
                 });
             } finally {
                 if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -956,22 +982,22 @@ async function handleCommand(msg) {
             }
         } catch (err) {
             console.error('Error !storyin:', err.message);
-            msg.reply('Aduh error sy 😹 coba lagi jo');
+            msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
     }
     else if (cmd.startsWith('!ig ')) {
         const link = msg.body.trim().split(' ').slice(1).join('').trim();
         if (!link || !link.includes('instagram.com')) {
-            return msg.reply('Format salah ee 😹\nCara pakai: *!ig [link reels/post IG]*\nContoh:\n!ig https://www.instagram.com/reels/xxxxx/');
+            return msg.reply('Format salah 😹\nCara pakai: *!ig [link reels/post IG]*\nContoh:\n!ig https://www.instagram.com/reels/xxxxx/');
         }
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply('Oke bentar sy download dulu reelsnya ee 🤭 sabar jo...');
+            await msg.reply('Oke bentar sy download dulu reelsnya 🤭 sabar yaa...');
 
             const buffer = await downloadIGVideo(link);
             if (!buffer) {
-                return msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link bener & publik\n2. Akun IG tidak private\nCoba lagi jo!');
+                return msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link bener & publik\n2. Akun IG tidak private\nCoba lagi yaa!');
             }
 
             const ts = Date.now();
@@ -985,7 +1011,7 @@ async function handleCommand(msg) {
                 const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'reels.mp4');
                 await client.sendMessage(uid, videoMedia, {
                     sendMediaAsDocument: false,
-                    caption: 'Nih reelsnya ee 🤭 kualitas HD!'
+                    caption: 'Nih reelsnya 🤭 kualitas HD!'
                 });
             } finally {
                 if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -993,7 +1019,7 @@ async function handleCommand(msg) {
             }
         } catch (err) {
             console.error('Error !ig:', err.message);
-            msg.reply('Aduh error sy 😹 coba lagi jo');
+            msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
     }
     else if (cmd === '!ig') {
@@ -1003,16 +1029,16 @@ async function handleCommand(msg) {
     else if (cmd.startsWith('!tiktok ')) {
         const link = msg.body.trim().split(' ').slice(1).join('').trim();
         if (!link || !link.includes('tiktok.com')) {
-            return msg.reply('Format salah ee 😹\nCara pakai: *!tiktok [link TikTok]*\nContoh:\n!tiktok https://www.tiktok.com/@user/video/xxxx');
+            return msg.reply('Format salah 😹\nCara pakai: *!tiktok [link TikTok]*\nContoh:\n!tiktok https://www.tiktok.com/@user/video/xxxx');
         }
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply('Oke bentar sy download dulu TikToknya ee 🤭 sabar jo...');
+            await msg.reply('Oke bentar sy download dulu TikToknya 🤭 sabar yaa...');
 
             const buffer = await downloadTikTokVideo(link);
             if (!buffer) {
-                return msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link harus publik\n2. Bukan live\nCoba lagi jo!');
+                return msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link harus publik\n2. Bukan live\nCoba lagi yaa!');
             }
 
             const ts = Date.now();
@@ -1026,7 +1052,7 @@ async function handleCommand(msg) {
                 const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'tiktok.mp4');
                 await client.sendMessage(uid, videoMedia, {
                     sendMediaAsDocument: false,
-                    caption: 'Nih videonya ee 🤭 kualitas HD!'
+                    caption: 'Nih videonya 🤭 kualitas HD!'
                 });
             } finally {
                 if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
@@ -1034,7 +1060,7 @@ async function handleCommand(msg) {
             }
         } catch (err) {
             console.error('Error !tiktok:', err.message);
-            msg.reply('Aduh error sy 😹 coba lagi jo');
+            msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
     }
     else if (cmd === '!tiktok') {
@@ -1054,23 +1080,23 @@ async function handleCommand(msg) {
         }
 
         if (!link || !link.includes('youtu')) {
-            return msg.reply('Format salah ee 😹\nCara pakai:\n*!yt [link]* → download video\n*!yt audio [link]* → download MP3\n\nContoh:\n!yt https://youtu.be/xxxxx\n!yt audio https://youtu.be/xxxxx');
+            return msg.reply('Format salah 😹\nCara pakai:\n*!yt [link]* → download video\n*!yt audio [link]* → download MP3\n\nContoh:\n!yt https://youtu.be/xxxxx\n!yt audio https://youtu.be/xxxxx');
         }
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply(`Oke bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'} ee 🤭 sabar jo...`);
+            await msg.reply(`Oke bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'} 🤭 sabar yaa...`);
 
             const buffer = await downloadYouTubeVideo(link, audioOnly);
             if (!buffer) {
-                return msg.reply('Aiih gagal download sy 😹\nCek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi jo!');
+                return msg.reply('Aiih gagal download sy 😹\nCek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi yaa!');
             }
 
             if (audioOnly) {
                 const audioMedia = new MessageMedia('audio/mpeg', buffer.toString('base64'), 'audio.mp3');
                 await client.sendMessage(uid, audioMedia, {
                     sendMediaAsDocument: true,
-                    caption: 'Nih MP3nya ee 🎵'
+                    caption: 'Nih MP3nya 🎵'
                 });
             } else {
                 const ts = Date.now();
@@ -1084,7 +1110,7 @@ async function handleCommand(msg) {
                     const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'youtube.mp4');
                     await client.sendMessage(uid, videoMedia, {
                         sendMediaAsDocument: false,
-                        caption: 'Nih videonya ee 🤭 kualitas HD!'
+                        caption: 'Nih videonya 🤭 kualitas HD!'
                     });
                 } finally {
                     if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
@@ -1093,7 +1119,7 @@ async function handleCommand(msg) {
             }
         } catch (err) {
             console.error('Error !yt:', err.message);
-            msg.reply('Aduh error sy 😹 coba lagi jo');
+            msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
     }
     else if (cmd === '!yt') {
@@ -1107,7 +1133,7 @@ async function handleCommand(msg) {
             const chat = await msg.getChat();
             chat.sendStateTyping();
             const apiKey = process.env.OPENWEATHER_API_KEY;
-            if (!apiKey) return msg.reply('API key cuaca belum diset ee 😹');
+            if (!apiKey) return msg.reply('API key cuaca belum diset 😹');
             const res = await axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(kota)}&appid=${apiKey}&units=metric&lang=id`);
             const d = res.data;
             const cuacaEmoji = {
@@ -1127,9 +1153,9 @@ async function handleCommand(msg) {
             msg.reply(teks);
         } catch (err) {
             if (err.response?.status === 404) {
-                msg.reply(`Kota "${kota}" tidak ditemukan ee 😹\nCoba tulis dalam bahasa Inggris, contoh:\n!cuaca Makassar\n!cuaca Jakarta`);
+                msg.reply(`Kota "${kota}" tidak ditemukan 😹\nCoba tulis dalam bahasa Inggris, contoh:\n!cuaca Makassar\n!cuaca Jakarta`);
             } else {
-                msg.reply('Aduh gagal ambil data cuaca sy 😹 coba lagi jo');
+                msg.reply('Aduh gagal ambil data cuaca sy 😹 coba lagi yaa');
             }
         }
     }
@@ -1147,7 +1173,7 @@ async function handleCommand(msg) {
             const cariRes = await axios.get(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(kota)}`);
             const kotaList = cariRes.data?.data;
             if (!kotaList || kotaList.length === 0) {
-                return msg.reply(`Kota "${kota}" tidak ditemukan ee 😹\nCoba nama kota lain jo`);
+                return msg.reply(`Kota "${kota}" tidak ditemukan 😹\nCoba nama kota lain jo`);
             }
             const kotaData = kotaList[0];
             // Ambil jadwal hari ini
@@ -1175,7 +1201,7 @@ async function handleCommand(msg) {
             msg.reply(teks);
         } catch (err) {
             console.error('Error !sholat:', err.message);
-            msg.reply('Aduh gagal ambil jadwal sholat sy 😹 coba lagi jo');
+            msg.reply('Aduh gagal ambil jadwal sholat sy 😹 coba lagi yaa');
         }
     }
     else if (cmd === '!sholat') {
@@ -1183,7 +1209,7 @@ async function handleCommand(msg) {
     }
     // ======== REMINDER OTOMATIS ========
     else if (cmd.startsWith('!reminder on')) {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup ee 😹');
+        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
         const kotaNama = msg.body.trim().split(' ').slice(2).join(' ').trim();
         if (!kotaNama) return msg.reply('Cara pakai: *!reminder on [kota]*\nContoh: !reminder on Palu');
         try {
@@ -1192,7 +1218,7 @@ async function handleCommand(msg) {
             const cariRes = await axios.get(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(kotaNama)}`);
             const kotaList = cariRes.data?.data;
             if (!kotaList || kotaList.length === 0) {
-                return msg.reply(`Kota "${kotaNama}" tidak ditemukan ee 😹\nCoba nama kota lain jo`);
+                return msg.reply(`Kota "${kotaNama}" tidak ditemukan 😹\nCoba nama kota lain jo`);
             }
             const kotaData = kotaList[0];
             groupReminders.set(msg.from, {
@@ -1204,12 +1230,12 @@ async function handleCommand(msg) {
             msg.reply(`✅ *Reminder Sholat Aktif!*\n📍 Kota: *${kotaData.lokasi}*\n\nBot akan kirim reminder otomatis di grup ini setiap:\n🔔 Imsak, 🌅 Subuh, 🌞 Dzuhur, 🌇 Ashar, 🍽️ Buka Puasa, 🌙 Isya\n\nUntuk nonaktifkan: *!reminder off*`);
         } catch (err) {
             console.error('Error !reminder on:', err.message);
-            msg.reply('Aduh gagal aktifkan reminder sy 😹 coba lagi jo');
+            msg.reply('Aduh gagal aktifkan reminder sy 😹 coba lagi yaa');
         }
     }
     else if (cmd === '!reminder off') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup ee 😹');
-        if (!groupReminders.has(msg.from)) return msg.reply('Reminder belum aktif di grup ini ee 😹');
+        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
+        if (!groupReminders.has(msg.from)) return msg.reply('Reminder belum aktif di grup ini 😹');
         groupReminders.delete(msg.from);
         saveReminders();
         msg.reply('❌ *Reminder sholat dinonaktifkan* di grup ini.');
@@ -1222,14 +1248,14 @@ async function handleCommand(msg) {
     }
     // ======== JADWAL KULIAH ========
     else if (cmd === '!jadwal on') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup ee 😹');
+        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
         groupJadwal.set(msg.from, true);
         saveJadwalGroups();
         msg.reply(`✅ *Reminder Jadwal Kuliah Aktif!*\n\nBot akan kirim pengingat *1 jam sebelum* kuliah di grup ini setiap:\n\n📅 *Senin*\n• 08:10 → Jaringan Komputer (09:10)\n• 11:40 → Sistem Operasi (12:40)\n\n📅 *Selasa*\n• 06:30 → Keamanan Siber (07:30)\n• 13:20 → Keamanan Sistem Komputer (14:20)\n\n📅 *Rabu*\n• 11:30 → Pengembangan Aplikasi WEB (12:30)\n\n📅 *Kamis*\n• 09:55 → Pemodelan dan Simulasi (10:55)\n• 13:20 → Pengembangan Aplikasi Bergerak (14:20)\n\nUntuk nonaktifkan: *!jadwal off*`);
     }
     else if (cmd === '!jadwal off') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup ee 😹');
-        if (!groupJadwal.has(msg.from)) return msg.reply('Reminder jadwal belum aktif di grup ini ee 😹');
+        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
+        if (!groupJadwal.has(msg.from)) return msg.reply('Reminder jadwal belum aktif di grup ini 😹');
         groupJadwal.delete(msg.from);
         saveJadwalGroups();
         msg.reply('❌ *Reminder jadwal kuliah dinonaktifkan* di grup ini.');
@@ -1268,11 +1294,11 @@ async function handleCommand(msg) {
         notes.push({ id, isi, by, ts: new Date().toISOString() });
         groupNotes.set(uid, notes);
         saveNotes();
-        msg.reply(`✅ Catatan *#${id}* tersimpan ee 📝`);
+        msg.reply(`✅ Catatan *#${id}* tersimpan 📝`);
     }
     else if (cmd === '!notes' || cmd === '!catatan') {
         const notes = groupNotes.get(uid) || [];
-        if (notes.length === 0) return msg.reply('Belum ada catatan ee 😹\nTambah pakai: *!catat [isi]*');
+        if (notes.length === 0) return msg.reply('Belum ada catatan 😹\nTambah pakai: *!catat [isi]*');
         let teks = `📝 *Catatan*\n─────────────────────\n`;
         for (const n of notes) {
             const tgl = new Date(n.ts).toLocaleDateString('id-ID', { day:'2-digit', month:'short' });
@@ -1287,7 +1313,7 @@ async function handleCommand(msg) {
         if (isNaN(no)) return msg.reply('Cara pakai: *!hapus note [nomor]*\nContoh: !hapus note 1');
         const notes = groupNotes.get(uid) || [];
         const idx = notes.findIndex(n => n.id === no);
-        if (idx === -1) return msg.reply(`Catatan #${no} tidak ditemukan ee 😹`);
+        if (idx === -1) return msg.reply(`Catatan #${no} tidak ditemukan 😹`);
         notes.splice(idx, 1);
         groupNotes.set(uid, notes);
         saveNotes();
@@ -1297,9 +1323,9 @@ async function handleCommand(msg) {
     else if (cmd.startsWith('!akademik tambah ')) {
         const raw = msg.body.trim().slice(17).trim();
         const parts = raw.split('|').map(s => s.trim());
-        if (parts.length < 3) return msg.reply('Format salah ee 😹\nCara pakai: *!akademik tambah [nama] | [deskripsi] | [url]*\nContoh:\n!akademik tambah SIGA | Link SIGA Untad | https://siga.com');
+        if (parts.length < 3) return msg.reply('Format salah 😹\nCara pakai: *!akademik tambah [nama] | [deskripsi] | [url]*\nContoh:\n!akademik tambah SIGA | Link SIGA Untad | https://siga.com');
         const [nama, label, url] = parts;
-        if (!url.startsWith('http')) return msg.reply('URL harus diawali http:// atau https:// ee 😹');
+        if (!url.startsWith('http')) return msg.reply('URL harus diawali http:// atau https:// 😹');
         const id = LINK_AKADEMIK.length > 0 ? Math.max(...LINK_AKADEMIK.map(l => l.id)) + 1 : 1;
         LINK_AKADEMIK.push({ id, nama, label, url });
         saveAkademik();
@@ -1317,7 +1343,7 @@ async function handleCommand(msg) {
         } else {
             idx = LINK_AKADEMIK.findIndex(l => l.nama.toLowerCase().includes(query.toLowerCase()));
         }
-        if (idx === -1) return msg.reply(`Link "${query}" tidak ditemukan ee 😹\nLihat nomor di *!akademik*`);
+        if (idx === -1) return msg.reply(`Link "${query}" tidak ditemukan 😹\nLihat nomor di *!akademik*`);
         const nama = LINK_AKADEMIK[idx].nama;
         LINK_AKADEMIK.splice(idx, 1);
         saveAkademik();
@@ -1334,12 +1360,12 @@ async function handleCommand(msg) {
             return msg.reply(teks.trim());
         }
         const found = LINK_AKADEMIK.find(l => l.nama.toLowerCase().includes(keyword) || l.label.toLowerCase().includes(keyword));
-        if (!found) return msg.reply(`Link "${keyword}" tidak ditemukan ee 😹\nKetik *!akademik* untuk lihat semua link`);
+        if (!found) return msg.reply(`Link "${keyword}" tidak ditemukan 😹\nKetik *!akademik* untuk lihat semua link`);
         msg.reply(`🔗 *${found.nama}*\n${found.label}\n\n${found.url}`);
     }
     // ======== COUNTDOWN UJIAN ========
     else if (cmd === '!ujian') {
-        if (jadwalUjian.length === 0) return msg.reply('Belum ada jadwal ujian ee 😹\nTambah pakai:\n*!ujian tambah [nama matkul] | [DD-MM-YYYY]*\nContoh: !ujian tambah UTS Jaringan Komputer | 10-03-2026');
+        if (jadwalUjian.length === 0) return msg.reply('Belum ada jadwal ujian 😹\nTambah pakai:\n*!ujian tambah [nama matkul] | [DD-MM-YYYY]*\nContoh: !ujian tambah UTS Jaringan Komputer | 10-03-2026');
         const now = new Date();
         now.setHours(0,0,0,0);
         let teks = `📝 *Jadwal Ujian*\n─────────────────────\n`;
@@ -1363,12 +1389,12 @@ async function handleCommand(msg) {
     else if (cmd.startsWith('!ujian tambah ')) {
         const raw = msg.body.trim().slice(14).trim();
         const parts = raw.split('|');
-        if (parts.length < 2) return msg.reply('Format salah ee 😹\nCara pakai: *!ujian tambah [nama] | [DD-MM-YYYY]*\nContoh: !ujian tambah UTS Jaringan Komputer | 10-03-2026');
+        if (parts.length < 2) return msg.reply('Format salah 😹\nCara pakai: *!ujian tambah [nama] | [DD-MM-YYYY]*\nContoh: !ujian tambah UTS Jaringan Komputer | 10-03-2026');
         const nama = parts[0].trim();
         const tglRaw = parts[1].trim();
         const [d, m, y] = tglRaw.split('-');
         const tanggal = `${y}-${m}-${d}`;
-        if (isNaN(new Date(tanggal).getTime())) return msg.reply('Format tanggal salah ee! Gunakan DD-MM-YYYY\nContoh: 10-03-2026');
+        if (isNaN(new Date(tanggal).getTime())) return msg.reply('Format tanggal salah! Gunakan DD-MM-YYYY\nContoh: 10-03-2026');
         const id = jadwalUjian.length > 0 ? Math.max(...jadwalUjian.map(u => u.id)) + 1 : 1;
         jadwalUjian.push({ id, nama, tanggal });
         saveUjian();
@@ -1380,7 +1406,7 @@ async function handleCommand(msg) {
         const no = parseInt(noStr);
         if (isNaN(no)) return msg.reply('Cara pakai: *!ujian hapus [nomor]*\nLihat nomor di *!ujian*');
         const idx = jadwalUjian.findIndex(u => u.id === no);
-        if (idx === -1) return msg.reply(`Ujian #${no} tidak ditemukan ee 😹`);
+        if (idx === -1) return msg.reply(`Ujian #${no} tidak ditemukan 😹`);
         const nama = jadwalUjian[idx].nama;
         jadwalUjian.splice(idx, 1);
         saveUjian();
@@ -1427,11 +1453,10 @@ async function handleCommand(msg) {
             msg.reply(teks);
         } catch (err) {
             if (err.response?.status === 404) {
-                msg.reply(`User GitHub *"${username}"* tidak ditemukan ee 😹`);
-            } else if (err.response?.status === 403) {
-                msg.reply('Rate limit GitHub tercapai ee 😹 Coba lagi beberapa menit lagi');
+                msg.reply(`User GitHub *"${username}"* tidak ditemukan 😹`);
+                msg.reply('Rate limit GitHub tercapai 😹 Coba lagi beberapa menit lagi');
             } else {
-                msg.reply('Gagal ambil data GitHub 😹 coba lagi jo');
+                msg.reply('Gagal ambil data GitHub 😹 coba lagi yaa');
             }
         }
     }
@@ -1440,7 +1465,7 @@ async function handleCommand(msg) {
     }
     else if (cmd === '!rmbg') {
         const apiKey = process.env.CLIPDROP_API_KEY;
-        if (!apiKey) return msg.reply('API key Clipdrop belum diset ee 😹');
+        if (!apiKey) return msg.reply('API key Clipdrop belum diset 😹');
 
         let targetMsg = null;
 
@@ -1450,7 +1475,7 @@ async function handleCommand(msg) {
                 if (quoted.hasMedia && (quoted.type === 'image' || quoted.type === 'sticker')) {
                     targetMsg = quoted;
                 } else {
-                    return msg.reply('Reply-nya harus gambar atau stiker ee 😹');
+                    return msg.reply('Reply-nya harus gambar atau stiker yaa 😹');
                 }
             } catch (e) {
                 return msg.reply('Gagal baca pesan yang di-reply 😹');
@@ -1464,10 +1489,10 @@ async function handleCommand(msg) {
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply('Bentar sy hapus backgroundnya dulu ee 🤭 sabar jo...');
+            await msg.reply('Bentar sy hapus backgroundnya dulu 🤭 sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
-            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+            if (!media) return msg.reply('Gagal download gambarnya 😹 coba jo lagi nanti');
 
             const imageBuffer = Buffer.from(media.data, 'base64');
 
@@ -1492,23 +1517,23 @@ async function handleCommand(msg) {
             const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
             await client.sendMessage(uid, resultMedia, {
                 sendMediaAsSticker: true,
-                stickerName: 'EsarBot',
-                stickerAuthor: 'EsarFauzan'
+                stickerName: 'BotBYEsarFauzan',
+                stickerAuthor: 'GooodBooy'
             });
-            await msg.reply('Background udah dihapus ee 🎨 dikirim sebagai *stiker* biar transparan!');
+            await msg.reply('Background udah dihapus 🎨 dikirim sebagai *stiker* biar transparan!');
 
         } catch (err) {
             const status = err.response?.status;
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
             console.error('Error !rmbg:', status, err.message, errBody);
             if (status === 402) {
-                msg.reply('Kuota Clipdrop habis ee 😹 Gratis hanya 100 gambar/bulan');
+                msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 gambar/bulan');
             } else if (status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses ee 😹 Coba gambar lain jo');
+                msg.reply('Gambarnya tidak bisa diproses 😹 Coba gambar lain jo');
             } else if (status === 401) {
-                msg.reply('API key Clipdrop tidak valid ee 😹');
+                msg.reply('API key Clipdrop tidak valid 😹');
             } else {
-                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi jo`);
+                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba jo lagi nanti`);
             }
         }
     }
@@ -1532,6 +1557,7 @@ Kirim video as *Dokumen* → bot optimize & kirim balik
 Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !stiker → Reply foto/GIF → jadikan stiker
 !rmbg → Hapus background foto → dikirim sebagai stiker transparan
+!upscale → Perbesar kualitas foto hingga 2048px 🔍
 
 🎭 *Ganti Mode*
 !mode normal → Mode biasa
