@@ -677,7 +677,7 @@ function startPrayerReminder() {
 
 // ============== MESSAGE HANDLER ==============
 client.on('message', async msg => {
-    if (!['chat', 'image', 'video', 'document'].includes(msg.type)) return;
+    if (!['chat', 'image', 'video', 'document', 'sticker'].includes(msg.type)) return;
 
     const isGroup = msg.from.includes('@g.us');
 
@@ -1452,18 +1452,18 @@ async function handleCommand(msg) {
         if (msg.hasQuotedMsg) {
             try {
                 const quoted = await msg.getQuotedMessage();
-                if (quoted.hasMedia && quoted.type === 'image') {
+                if (quoted.hasMedia && (quoted.type === 'image' || quoted.type === 'sticker')) {
                     targetMsg = quoted;
                 } else {
-                    return msg.reply('Reply-nya harus gambar ee 😹');
+                    return msg.reply('Reply-nya harus gambar atau stiker ee 😹');
                 }
             } catch (e) {
                 return msg.reply('Gagal baca pesan yang di-reply 😹');
             }
-        } else if (msg.hasMedia && msg.type === 'image') {
+        } else if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
             targetMsg = msg;
         } else {
-            return msg.reply('Cara pakai:\n• Kirim foto + caption *!rmbg*\n• Atau reply foto dengan *!rmbg*\n\n_Hasil dikirim sebagai stiker transparan_ 🎨\n_Gratis 100 gambar/bulan_');
+            return msg.reply('Cara pakai:\n• Kirim foto + caption *!rmbg*\n• Atau *reply foto/stiker* dengan *!rmbg*\n\n_Hasil dikirim sebagai stiker transparan_ 🎨\n_Gratis 100 gambar/bulan_');
         }
 
         try {
