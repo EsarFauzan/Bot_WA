@@ -16,7 +16,7 @@ const openai = new OpenAI({
 });
 
 const MODEL_NAME = "arcee-ai/trinity-large-preview:free";
-const VISION_MODEL = "google/gemini-2.0-flash-exp:free";
+const VISION_MODEL = "google/gemini-2.0-flash-lite-001";
 
 // ============== VARIASI SALAM ==============
 const SALAM_DB = {
