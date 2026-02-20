@@ -1593,6 +1593,90 @@ async function handleCommand(msg) {
             }
         }
     }
+    // ======== QR CODE GENERATOR ========
+    else if (cmd.startsWith('!qr ')) {
+        const teks = msg.body.slice(4).trim();
+        if (!teks) return msg.reply('Cara pakai: *!qr [teks/link]*\nContoh: *!qr https://google.com*');
+
+        try {
+            const QRCode = require('qrcode');
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+
+            const qrBuffer = await QRCode.toBuffer(teks, {
+                type: 'png',
+                width: 512,
+                margin: 2,
+                color: { dark: '#000000', light: '#FFFFFF' }
+            });
+
+            const qrMedia = new MessageMedia('image/png', qrBuffer.toString('base64'), 'qrcode.png');
+            await client.sendMessage(uid, qrMedia, {
+                caption: `✅ QR Code berhasil dibuat!\n\n_Isi: ${teks.length > 50 ? teks.slice(0, 50) + '...' : teks}_`
+            });
+
+        } catch (err) {
+            console.error('Error !qr:', err.message);
+            msg.reply('Aduh gagal buat QR code ee 😹 coba lagi jo');
+        }
+    }
+    else if (cmd === '!qr') {
+        msg.reply('Cara pakai: *!qr [teks/link]*\nContoh:\n!qr https://google.com\n!qr Halo Dunia');
+    }
+    // ======== KOMPRES GAMBAR ========
+    else if (cmd === '!kompres') {
+        let targetMsg = null;
+
+        if (msg.hasQuotedMsg) {
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted.hasMedia && quoted.type === 'image') {
+                    targetMsg = quoted;
+                } else {
+                    return msg.reply('Reply-nya harus gambar ee 😹');
+                }
+            } catch (e) {
+                return msg.reply('Gagal baca pesan yang di-reply 😹');
+            }
+        } else if (msg.hasMedia && msg.type === 'image') {
+            targetMsg = msg;
+        } else {
+            return msg.reply('Cara pakai:\n• Kirim foto + caption *!kompres*\n• Atau *reply foto* dengan *!kompres*\n\n_Ukuran foto akan dikecilkan_ 📦');
+        }
+
+        try {
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+            await msg.reply('Bentar sy kompres dulu fotonya ee 🤭 sabar jo...');
+
+            const media = await targetMsg.downloadMedia();
+            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+
+            const inputBuffer = Buffer.from(media.data, 'base64');
+            const inputSize = inputBuffer.length;
+
+            // Kompres ke JPEG quality 60, resize max 1280px
+            const outputBuffer = await sharp(inputBuffer)
+                .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 60, mozjpeg: true })
+                .toBuffer();
+
+            const outputSize = outputBuffer.length;
+            const saved = (((inputSize - outputSize) / inputSize) * 100).toFixed(1);
+
+            const resultMedia = new MessageMedia('image/jpeg', outputBuffer.toString('base64'), 'compressed.jpg');
+            await client.sendMessage(uid, resultMedia, {
+                caption: `📦 *Foto berhasil dikompres!*\n\n` +
+                         `Sebelum : ${(inputSize / 1024).toFixed(1)} KB\n` +
+                         `Sesudah : ${(outputSize / 1024).toFixed(1)} KB\n` +
+                         `Hemat   : *${saved}%* 🎉`
+            });
+
+        } catch (err) {
+            console.error('Error !kompres:', err.message);
+            msg.reply('Aduh gagal kompres fotonya ee 😹 coba lagi jo');
+        }
+    }
     else if (cmd === '!help' || cmd === '!menu') {
         const currentMode = userModes.get(uid) || 'normal';
         const menuText = `🤖 *ESARFAUZAN BOT*
@@ -1614,6 +1698,8 @@ Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !stiker → Reply foto/GIF → jadikan stiker
 !rmbg → Hapus background foto → dikirim sebagai stiker transparan
 !upscale → Perbesar kualitas foto hingga 2048px 🔍
+!kompres → Kompres ukuran foto 📦
+!qr [teks/link] → Buat QR Code dari teks/link
 
 🎭 *Ganti Mode*
 !mode normal → Mode biasa
