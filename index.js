@@ -1443,7 +1443,8 @@ async function handleCommand(msg) {
     else if (cmd === '!github') {
         msg.reply('Cara pakai: *!github [username]*\n\nContoh:\n!github torvalds\n!github EsarFauzan');
     }
-    else if (cmd === '!rmbg') {
+    else if (cmd === '!rmbg' || cmd === '!rmbg stiker') {
+        const asStickerMode = cmd === '!rmbg stiker';
         const apiKey = process.env.CLIPDROP_API_KEY;
         if (!apiKey) return msg.reply('API key Clipdrop belum diset ee 😹');
 
@@ -1463,7 +1464,16 @@ async function handleCommand(msg) {
         } else if (msg.hasMedia && msg.type === 'image') {
             targetMsg = msg;
         } else {
-            return msg.reply('Cara pakai:\n1. Kirim foto + caption *!rmbg*\n2. Atau reply foto dengan *!rmbg*\n\n_Gratis 100 gambar/bulan_ 🎨');
+            return msg.reply(
+                'Cara pakai:\n' +
+                '📷 *Kirim sebagai gambar (PNG):*\n' +
+                '• Kirim foto + caption *!rmbg*\n' +
+                '• Atau reply foto dengan *!rmbg*\n\n' +
+                '🪄 *Kirim sebagai stiker (transparan):*\n' +
+                '• Kirim foto + caption *!rmbg stiker*\n' +
+                '• Atau reply foto dengan *!rmbg stiker*\n\n' +
+                '_Gratis 100 gambar/bulan_ 🎨'
+            );
         }
 
         try {
@@ -1477,20 +1487,27 @@ async function handleCommand(msg) {
             const imageBuffer = Buffer.from(media.data, 'base64');
             const resultBuffer = await removeBackground(imageBuffer);
 
-            // Konversi PNG hasil rmbg → WebP untuk stiker (WhatsApp support transparansi di stiker)
-            const webpBuffer = await sharp(resultBuffer)
-                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                .webp({ quality: 90 })
-                .toBuffer();
+            if (asStickerMode) {
+                // Kirim sebagai stiker WebP (transparan)
+                const webpBuffer = await sharp(resultBuffer)
+                    .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                    .webp({ quality: 90 })
+                    .toBuffer();
 
-            const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
-            await client.sendMessage(uid, resultMedia, {
-                sendMediaAsSticker: true,
-                stickerName: 'EsarBot',
-                stickerAuthor: 'EsarFauzan',
-                caption: 'Nih hasilnya ee 🎨 background udah dihapus!'
-            });
-            await msg.reply('Background udah dihapus ee 🎨 dikirim sebagai stiker biar transparan!');
+                const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
+                await client.sendMessage(uid, resultMedia, {
+                    sendMediaAsSticker: true,
+                    stickerName: 'EsarBot',
+                    stickerAuthor: 'EsarFauzan'
+                });
+                await msg.reply('Background udah dihapus ee 🎨 dikirim sebagai *stiker* biar transparan!');
+            } else {
+                // Kirim sebagai gambar PNG biasa
+                const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'result.png');
+                await client.sendMessage(uid, resultMedia, {
+                    caption: 'Nih hasilnya ee 🎨 background udah dihapus!\n_Simpan sebagai PNG agar transparan_'
+                });
+            }
 
         } catch (err) {
             const status = err.response?.status;
@@ -1526,7 +1543,8 @@ Kirim video as *Dokumen* → bot optimize & kirim balik
 🖼️ *Stiker & Edit Foto*
 Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !stiker → Reply foto/GIF → jadikan stiker
-!rmbg → Hapus background foto (reply foto / kirim foto + caption)
+!rmbg → Hapus background → kirim sebagai gambar PNG
+!rmbg stiker → Hapus background → kirim sebagai stiker transparan
 
 🎭 *Ganti Mode*
 !mode normal → Mode biasa
