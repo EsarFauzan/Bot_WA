@@ -1477,10 +1477,20 @@ async function handleCommand(msg) {
             const imageBuffer = Buffer.from(media.data, 'base64');
             const resultBuffer = await removeBackground(imageBuffer);
 
-            const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'result.png');
+            // Konversi PNG hasil rmbg → WebP untuk stiker (WhatsApp support transparansi di stiker)
+            const webpBuffer = await sharp(resultBuffer)
+                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .webp({ quality: 90 })
+                .toBuffer();
+
+            const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
             await client.sendMessage(uid, resultMedia, {
+                sendMediaAsSticker: true,
+                stickerName: 'EsarBot',
+                stickerAuthor: 'EsarFauzan',
                 caption: 'Nih hasilnya ee 🎨 background udah dihapus!'
             });
+            await msg.reply('Background udah dihapus ee 🎨 dikirim sebagai stiker biar transparan!');
 
         } catch (err) {
             const status = err.response?.status;
