@@ -1,0 +1,54 @@
+Cara Update Bot:
+1. Di PC kamu — edit kode, lalu push ke GitHub:	
+git add .
+git commit -m "tambah fitur baru"
+git push origin main
+2. Di terminal Droplet — pull perubahan:
+cd Bot_WA
+git pull origin main
+pm2 restart bot-wa
+
+biar Lebih Mudah — Buat Script Auto Update:
+nano update.sh
+
+Isi dengan:
+cd /root/Bot_WA
+git pull origin main
+npm install
+pm2 restart bot-wa
+echo "Bot berhasil diupdate!"
+
+Simpan CTRL+X → Y → Enter
+
+Jadikan executable:
+chmod +x update.sh
+
+Kalau mau update bot cukup jalankan:
+./update.sh
+
+Tinggal buka PowerShell lagi di PC kamu dan ketik:
+ssh root@152.42.181.24
+
+
+Berikut hal penting yang perlu kamu ketahui:
+
+🔧 Perintah Penting PM2
+pm2 logs bot-wa		:Lihat log bot
+pm2 restart bot-wa	:Restart bot
+pm2 stop bot-wa		:Stop bot
+pm2 status		:Cek status bot
+
+⚠️ Hal Penting
+1. Jangan sampai Credit Digital Ocean habis
+Pantau credit di cloud.digitalocean.com/billing
+$200 credit dari GitHub Education Pack
+
+2. Jika Bot Tidak Merespon
+pm2 restart bot-wa
+pm2 logs bot-wa
+
+3. Jika QR Code Expired / Logout
+cd Bot_WA
+rm -rf .wwebjs_auth
+pm2 restart bot-wa
+pm2 logs bot-wa

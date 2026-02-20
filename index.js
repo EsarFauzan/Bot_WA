@@ -545,6 +545,28 @@ async function downloadYouTubeVideo(url, audioOnly = false) {
     }
 }
 
+// ============== REMOVE BACKGROUND (CLIPDROP) ==============
+async function removeBackground(imageBuffer) {
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('image_file', imageBuffer, {
+        filename: 'image.jpg',
+        contentType: 'image/jpeg'
+    });
+
+    const res = await axios.post('https://clipdrop-api.co/remove-background/v1', form, {
+        headers: {
+            ...form.getHeaders(),
+            'x-api-key': process.env.CLIPDROP_API_KEY
+        },
+        responseType: 'arraybuffer',
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity
+    });
+
+    return Buffer.from(res.data);
+}
+
 // ============== WHATSAPP CLIENT ==============
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -1415,6 +1437,56 @@ async function handleCommand(msg) {
     else if (cmd === '!github') {
         msg.reply('Cara pakai: *!github [username]*\n\nContoh:\n!github torvalds\n!github EsarFauzan');
     }
+    else if (cmd === '!rmbg') {
+        const apiKey = process.env.CLIPDROP_API_KEY;
+        if (!apiKey) return msg.reply('API key Clipdrop belum diset ee 😹');
+
+        let targetMsg = null;
+
+        if (msg.hasQuotedMsg) {
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted.hasMedia && quoted.type === 'image') {
+                    targetMsg = quoted;
+                } else {
+                    return msg.reply('Reply-nya harus gambar ee 😹');
+                }
+            } catch (e) {
+                return msg.reply('Gagal baca pesan yang di-reply 😹');
+            }
+        } else if (msg.hasMedia && msg.type === 'image') {
+            targetMsg = msg;
+        } else {
+            return msg.reply('Cara pakai:\n1. Kirim foto + caption *!rmbg*\n2. Atau reply foto dengan *!rmbg*\n\n_Gratis 100 gambar/bulan_ 🎨');
+        }
+
+        try {
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+            await msg.reply('Bentar sy hapus backgroundnya dulu ee 🤭 sabar jo...');
+
+            const media = await targetMsg.downloadMedia();
+            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+
+            const imageBuffer = Buffer.from(media.data, 'base64');
+            const resultBuffer = await removeBackground(imageBuffer);
+
+            const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'result.png');
+            await client.sendMessage(uid, resultMedia, {
+                caption: 'Nih hasilnya ee 🎨 background udah dihapus!'
+            });
+
+        } catch (err) {
+            console.error('Error !rmbg:', err.message);
+            if (err.response?.status === 402) {
+                msg.reply('Kuota Clipdrop habis ee 😹 Gratis hanya 100 gambar/bulan');
+            } else if (err.response?.status === 400) {
+                msg.reply('Gambarnya tidak bisa diproses ee 😹 Coba gambar lain');
+            } else {
+                msg.reply('Aduh error sy 😹 coba lagi jo');
+            }
+        }
+    }
     else if (cmd === '!help' || cmd === '!menu') {
         const currentMode = userModes.get(uid) || 'normal';
         const menuText = `🤖 *ESARFAUZAN BOT*
@@ -1431,9 +1503,10 @@ Mode aktif: *${currentMode.toUpperCase()}*
 Kirim video as *Dokumen* → bot optimize & kirim balik
 !storyin → Reply video dokumen → convert HD
 
-🖼️ *Stiker*
+🖼️ *Stiker & Edit Foto*
 Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !stiker → Reply foto/GIF → jadikan stiker
+!rmbg → Hapus background foto (reply foto / kirim foto + caption)
 
 🎭 *Ganti Mode*
 !mode normal → Mode biasa
