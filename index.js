@@ -1502,10 +1502,46 @@ async function handleCommand(msg) {
                 });
                 await msg.reply('Background udah dihapus ee 🎨 dikirim sebagai *stiker* biar transparan!');
             } else {
-                // Kirim sebagai gambar PNG biasa
-                const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'result.png');
+                // Buat background checkered (kotak abu2) — standar indikator transparan
+                const size = 20;
+                const { width, height } = await sharp(resultBuffer).metadata();
+                const w = width || 512;
+                const h = height || 512;
+
+                // Buat checkered pattern sebagai background
+                const tiles = [];
+                for (let y = 0; y < h; y += size) {
+                    for (let x = 0; x < w; x += size) {
+                        const isLight = ((x / size) + (y / size)) % 2 === 0;
+                        const color = isLight ? [200, 200, 200] : [150, 150, 150];
+                        tiles.push({
+                            input: await sharp({
+                                create: {
+                                    width: Math.min(size, w - x),
+                                    height: Math.min(size, h - y),
+                                    channels: 3,
+                                    background: { r: color[0], g: color[1], b: color[2] }
+                                }
+                            }).png().toBuffer(),
+                            left: x,
+                            top: y
+                        });
+                    }
+                }
+
+                const checkerBuffer = await sharp({
+                    create: { width: w, height: h, channels: 3, background: { r: 200, g: 200, b: 200 } }
+                }).composite(tiles).png().toBuffer();
+
+                // Gabungkan checkered + hasil rmbg
+                const finalBuffer = await sharp(checkerBuffer)
+                    .composite([{ input: resultBuffer, blend: 'over' }])
+                    .jpeg({ quality: 95 })
+                    .toBuffer();
+
+                const resultMedia = new MessageMedia('image/jpeg', finalBuffer.toString('base64'), 'result.jpg');
                 await client.sendMessage(uid, resultMedia, {
-                    caption: 'Nih hasilnya ee 🎨 background udah dihapus!\n_Simpan sebagai PNG agar transparan_'
+                    caption: 'Nih hasilnya ee 🎨 background udah dihapus!\n_Kotak abu = area transparan_'
                 });
             }
 
