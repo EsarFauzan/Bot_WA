@@ -633,7 +633,7 @@ function startJadwalReminder() {
 ⏱️ Selesai    : *${jadwal.selesai} WITA*
 📅 Hari       : *${NAMA_HARI[jadwal.hari]}*
 ─────────────────────
-_Jangan telat masuk kelas ee! 🙏_`;
+_Jangan telat masuk kelas nya! 🙏_`;
 
             for (const [groupId] of groupJadwal.entries()) {
                 try {
@@ -754,10 +754,10 @@ client.on('message', async msg => {
             try {
                 const chat = await msg.getChat();
                 chat.sendStateTyping();
-                await msg.reply('Bentar sy optimize videonya dulu ee 🤭 sabar jo...');
+                await msg.reply('Bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
                 const media = await msg.downloadMedia();
-                if (!media) return msg.reply('Gagal download videonya 😹 coba lagi jo');
+                if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
 
                 const os = require('os');
                 const ts = Date.now();
@@ -773,7 +773,7 @@ client.on('message', async msg => {
 
                     await client.sendMessage(userId, optimizedMedia, {
                         sendMediaAsDocument: false,
-                        caption: 'Nih videonya ee 🤭 kualitas tinggi, tinggal download trus upload ke story!'
+                        caption: 'Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!'
                     });
                 } finally {
                     if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -781,7 +781,7 @@ client.on('message', async msg => {
                 }
             } catch (err) {
                 console.error('Error optimize video:', err.message);
-                msg.reply('Aduh error sy proses videonya 😹 coba lagi jo');
+                msg.reply('Aduh error sy proses videonya 😹 coba lagi yaa');
             }
             return;
         }
@@ -1534,6 +1534,62 @@ async function handleCommand(msg) {
                 msg.reply('API key Clipdrop tidak valid 😹');
             } else {
                 msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba jo lagi nanti`);
+            }
+        }
+    }
+    // ======== UPSCALE IMAGE ========
+    else if (cmd === '!upscale') {
+        const apiKey = process.env.CLIPDROP_API_KEY;
+        if (!apiKey) return msg.reply('API key Clipdrop belum diset ee 😹');
+
+        let targetMsg = null;
+
+        if (msg.hasQuotedMsg) {
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted.hasMedia && quoted.type === 'image') {
+                    targetMsg = quoted;
+                } else {
+                    return msg.reply('Reply-nya harus gambar ee 😹');
+                }
+            } catch (e) {
+                return msg.reply('Gagal baca pesan yang di-reply 😹');
+            }
+        } else if (msg.hasMedia && msg.type === 'image') {
+            targetMsg = msg;
+        } else {
+            return msg.reply('Cara pakai:\n• Kirim foto + caption *!upscale*\n• Atau *reply foto* dengan *!upscale*\n\n_Foto akan diperbesar kualitasnya hingga 2048px_ 🔍');
+        }
+
+        try {
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+            await msg.reply('Bentar sy upscale dulu fotonya ee 🤭 sabar jo...');
+
+            const media = await targetMsg.downloadMedia();
+            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+
+            const imageBuffer = Buffer.from(media.data, 'base64');
+            const pngBuffer = await sharp(imageBuffer).png().toBuffer();
+            const resultBuffer = await upscaleImage(pngBuffer);
+
+            const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
+            await client.sendMessage(uid, resultMedia, {
+                caption: 'Nih fotonya ee 🔍 kualitas udah ditingkatkan ke 2048px!'
+            });
+
+        } catch (err) {
+            const status = err.response?.status;
+            const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
+            console.error('Error !upscale:', status, err.message, errBody);
+            if (status === 402) {
+                msg.reply('Kuota Clipdrop habis ee 😹 Gratis hanya 100 upscale/bulan');
+            } else if (status === 400) {
+                msg.reply('Gambarnya tidak bisa diproses ee 😹\nPastikan:\n• Format JPG/PNG\n• Ukuran maks 16MB\nCoba gambar lain jo');
+            } else if (status === 401) {
+                msg.reply('API key Clipdrop tidak valid ee 😹');
+            } else {
+                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi jo`);
             }
         }
     }
