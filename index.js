@@ -549,13 +549,8 @@ async function downloadYouTubeVideo(url, audioOnly = false) {
 async function removeBackground(imageBuffer) {
     const FormData = require('form-data');
 
-    // Konversi ke PNG pakai sharp — jangan JPEG karena JPEG ubah transparan jadi putih
-    const pngBuffer = await sharp(imageBuffer)
-        .png()
-        .toBuffer();
-
     const form = new FormData();
-    form.append('image_file', pngBuffer, {
+    form.append('image_file', imageBuffer, {
         filename: 'image.png',
         contentType: 'image/png'
     });
@@ -1475,12 +1470,23 @@ async function handleCommand(msg) {
             if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
 
             const imageBuffer = Buffer.from(media.data, 'base64');
-            const resultBuffer = await removeBackground(imageBuffer);
+
+            // Konversi input ke PNG dengan alpha channel terjaga
+            // Flatten transparan → magenta (#FF00FF) bukan putih,
+            // agar Clipdrop tetap bisa hapus background putih
+            const pngInput = await sharp(imageBuffer)
+                .ensureAlpha()
+                .flatten({ background: { r: 255, g: 0, b: 255 } })
+                .png()
+                .toBuffer();
+
+            const resultBuffer = await removeBackground(pngInput);
 
             // Selalu kirim sebagai stiker WebP transparan
             const webpBuffer = await sharp(resultBuffer)
+                .ensureAlpha()
                 .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                .webp({ quality: 90 })
+                .webp({ quality: 90, alphaQuality: 100 })
                 .toBuffer();
 
             const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
