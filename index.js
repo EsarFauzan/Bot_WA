@@ -548,8 +548,14 @@ async function downloadYouTubeVideo(url, audioOnly = false) {
 // ============== REMOVE BACKGROUND (CLIPDROP) ==============
 async function removeBackground(imageBuffer) {
     const FormData = require('form-data');
+
+    // Konversi ke JPEG dulu pakai sharp biar Clipdrop bisa proses dengan benar
+    const jpegBuffer = await sharp(imageBuffer)
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
     const form = new FormData();
-    form.append('image_file', imageBuffer, {
+    form.append('image_file', jpegBuffer, {
         filename: 'image.jpg',
         contentType: 'image/jpeg'
     });
@@ -1477,13 +1483,17 @@ async function handleCommand(msg) {
             });
 
         } catch (err) {
-            console.error('Error !rmbg:', err.message);
-            if (err.response?.status === 402) {
+            const status = err.response?.status;
+            const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
+            console.error('Error !rmbg:', status, err.message, errBody);
+            if (status === 402) {
                 msg.reply('Kuota Clipdrop habis ee 😹 Gratis hanya 100 gambar/bulan');
-            } else if (err.response?.status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses ee 😹 Coba gambar lain');
+            } else if (status === 400) {
+                msg.reply('Gambarnya tidak bisa diproses ee 😹 Coba gambar lain jo');
+            } else if (status === 401) {
+                msg.reply('API key Clipdrop tidak valid ee 😹');
             } else {
-                msg.reply('Aduh error sy 😹 coba lagi jo');
+                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi jo`);
             }
         }
     }
