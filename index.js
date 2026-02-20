@@ -549,15 +549,15 @@ async function downloadYouTubeVideo(url, audioOnly = false) {
 async function removeBackground(imageBuffer) {
     const FormData = require('form-data');
 
-    // Konversi ke JPEG dulu pakai sharp biar Clipdrop bisa proses dengan benar
-    const jpegBuffer = await sharp(imageBuffer)
-        .jpeg({ quality: 90 })
+    // Konversi ke PNG pakai sharp — jangan JPEG karena JPEG ubah transparan jadi putih
+    const pngBuffer = await sharp(imageBuffer)
+        .png()
         .toBuffer();
 
     const form = new FormData();
-    form.append('image_file', jpegBuffer, {
-        filename: 'image.jpg',
-        contentType: 'image/jpeg'
+    form.append('image_file', pngBuffer, {
+        filename: 'image.png',
+        contentType: 'image/png'
     });
 
     const res = await axios.post('https://clipdrop-api.co/remove-background/v1', form, {
