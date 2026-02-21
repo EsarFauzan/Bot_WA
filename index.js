@@ -621,11 +621,17 @@ client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
 });
 
+let schedulersStarted = false;
+
 client.on('ready', () => {
     console.log(`✅ Bot EsarFauzan siap! Model: ${MODEL_NAME}`);
     console.log(`📊 Total chat: ${stats.totalChats}`);
-    startPrayerReminder();
-    startJadwalReminder();
+    // Hanya jalankan scheduler sekali — cegah duplikat saat reconnect
+    if (!schedulersStarted) {
+        startPrayerReminder();
+        startJadwalReminder();
+        schedulersStarted = true;
+    }
 });
 
 client.on('auth_failure', msg => {
@@ -633,17 +639,22 @@ client.on('auth_failure', msg => {
     process.exit(1);
 });
 
+let isReconnecting = false;
+
 client.on('disconnected', async (reason) => {
     console.warn('⚠️ Bot disconnect:', reason);
-    console.log('🔄 Mencoba reconnect dalam 5 detik...');
+    if (isReconnecting) return;
+    isReconnecting = true;
+    console.log('🔄 Mencoba reconnect dalam 10 detik...');
     setTimeout(async () => {
         try {
             await client.initialize();
+            isReconnecting = false;
         } catch (err) {
             console.error('❌ Reconnect gagal, restart process...', err);
             process.exit(1);
         }
-    }, 5000);
+    }, 10000);
 });
 
 // Handle uncaught errors agar PM2 bisa restart
