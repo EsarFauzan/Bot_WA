@@ -668,6 +668,18 @@ process.on('unhandledRejection', (reason) => {
     console.error('❌ Unhandled Rejection:', reason);
 });
 
+// Bersihkan memory: hapus history & cooldown user yang sudah lama tidak aktif
+setInterval(() => {
+    const now = Date.now();
+    const MAX_IDLE = 30 * 60 * 1000; // 30 menit
+    for (const [uid, ts] of cooldowns.entries()) {
+        if (now - ts > MAX_IDLE) {
+            cooldowns.delete(uid);
+            history.delete(uid);
+        }
+    }
+}, 5 * 60 * 1000); // cek setiap 5 menit
+
 // ============== JADWAL KULIAH SCHEDULER ==============
 function startJadwalReminder() {
     console.log('📚 Jadwal kuliah reminder scheduler aktif');
@@ -1128,7 +1140,7 @@ async function handleCommand(msg) {
         let audioOnly = false;
         let link = '';
 
-        if (parts[1] === 'audio') {
+        if (parts[1]?.toLowerCase() === 'audio') {
             audioOnly = true;
             link = parts.slice(2).join('').trim();
         } else {
@@ -1740,7 +1752,7 @@ async function handleCommand(msg) {
 Mode aktif: *${currentMode.toUpperCase()}*
 ─────────────────────
 
-� *Download*
+📥 *Download*
 !ig [link] → Download reels/post IG
 !tiktok [link] → Download video TikTok
 !yt [link] → Download video YouTube
