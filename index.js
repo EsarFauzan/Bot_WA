@@ -562,13 +562,13 @@ async function removeBackground(imageBuffer) {
         },
         responseType: 'arraybuffer',
         maxContentLength: Infinity,
-        maxBodyLength: Infinity
+        maxBodyLength: Infinity,
+        timeout: 60000
     });
 
     return Buffer.from(res.data);
 }
 
-// ============== WHATSAPP CLIENT ==============
 // ============== UPSCALE IMAGE (CLIPDROP) ==============
 async function upscaleImage(imageBuffer) {
     const FormData = require('form-data');
@@ -588,7 +588,8 @@ async function upscaleImage(imageBuffer) {
         },
         responseType: 'arraybuffer',
         maxContentLength: Infinity,
-        maxBodyLength: Infinity
+        maxBodyLength: Infinity,
+        timeout: 60000
     });
 
     return Buffer.from(res.data);
@@ -1509,6 +1510,7 @@ async function handleCommand(msg) {
         } catch (err) {
             if (err.response?.status === 404) {
                 msg.reply(`User GitHub *"${username}"* tidak ditemukan 😹`);
+            } else if (err.response?.status === 403) {
                 msg.reply('Rate limit GitHub tercapai 😹 Coba lagi beberapa menit lagi');
             } else {
                 msg.reply('Gagal ambil data GitHub 😹 coba lagi yaa');
