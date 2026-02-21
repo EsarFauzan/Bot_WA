@@ -597,7 +597,23 @@ async function upscaleImage(imageBuffer) {
 // ============== WHATSAPP CLIENT ==============
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    puppeteer: {
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu',
+            '--disable-extensions',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding'
+        ],
+        headless: true
+    }
 });
 
 client.on('qr', qr => {
@@ -610,6 +626,34 @@ client.on('ready', () => {
     console.log(`📊 Total chat: ${stats.totalChats}`);
     startPrayerReminder();
     startJadwalReminder();
+});
+
+client.on('auth_failure', msg => {
+    console.error('❌ Auth gagal, restart bot...', msg);
+    process.exit(1);
+});
+
+client.on('disconnected', async (reason) => {
+    console.warn('⚠️ Bot disconnect:', reason);
+    console.log('🔄 Mencoba reconnect dalam 5 detik...');
+    setTimeout(async () => {
+        try {
+            await client.initialize();
+        } catch (err) {
+            console.error('❌ Reconnect gagal, restart process...', err);
+            process.exit(1);
+        }
+    }, 5000);
+});
+
+// Handle uncaught errors agar PM2 bisa restart
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('❌ Unhandled Rejection:', reason);
 });
 
 // ============== JADWAL KULIAH SCHEDULER ==============
