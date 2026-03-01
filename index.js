@@ -1639,43 +1639,42 @@ async function handleCommand(msg) {
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply(`🔍 Bentar sy cari *${query}* di MyAnimeList dulu 🤭 sabar jo...`);
+            await msg.reply(`🔍 Bentar sy cari *${query}* di Kusonime dulu 🤭 sabar jo...`);
 
-            const searchUrl = `https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=5&sfw=true`;
+            const searchUrl = `https://kusonime-api-phi.vercel.app/api/search?s=${encodeURIComponent(query)}`;
             const res = await axios.get(searchUrl, { timeout: 15000 });
 
-            const data = res.data?.data || [];
+            const listAnime = res.data?.data?.listAnime || [];
 
-            if (data.length === 0) {
-                return msg.reply(`Anime *"${query}"* tidak ditemukan 😹\nCoba judul lain jo`);
+            if (listAnime.length === 0) {
+                return msg.reply(`Anime *"${query}"* tidak ditemukan di Kusonime 😹\nCoba judul lain jo`);
             }
 
+            const hasil = listAnime.slice(0, 5);
+
             let teks = `🌏 *Hasil Pencarian: "${query}"*\n`;
-            teks += `📊 Ditemukan ${data.length} anime\n`;
+            teks += `📊 Ditemukan ${hasil.length} anime\n`;
             teks += `─────────────────────\n\n`;
 
-            for (let i = 0; i < data.length; i++) {
-                const a = data[i];
+            for (let i = 0; i < hasil.length; i++) {
+                const a = hasil[i];
                 teks += `*${i + 1}. ${a.title}*\n`;
-                if (a.title_english && a.title_english !== a.title)
-                    teks += `   (${a.title_english})\n`;
-                if (a.type)     teks += `📺 Tipe    : ${a.type}\n`;
-                if (a.score)    teks += `⭐ Score   : ${a.score}/10\n`;
-                if (a.status)   teks += `📌 Status  : ${a.status}\n`;
-                if (a.episodes) teks += `🎬 Episode : ${a.episodes}\n`;
-                if (a.year)     teks += `📅 Tahun   : ${a.year}\n`;
+                if (a.genres && a.genres.length > 0) {
+                    const genreList = a.genres.map(g => g.name).join(', ');
+                    teks += `🎭 Genre  : ${genreList}\n`;
+                }
                 teks += `🔗 ${a.url}\n\n`;
             }
 
             teks += `─────────────────────\n`;
-            teks += `_Sumber: MyAnimeList (Jikan API)_`;
+            teks += `_Sumber: kusonime.com_`;
 
             msg.reply(teks);
 
         } catch (err) {
             console.error('Error !anime:', err.message);
             if (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED') {
-                msg.reply('Koneksi ke MyAnimeList timeout 😹 coba lagi jo');
+                msg.reply('Koneksi ke Kusonime timeout 😹 coba lagi jo');
             } else {
                 msg.reply('Aduh gagal cari anime ee 😹 coba lagi jo');
             }
@@ -2018,7 +2017,7 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !ujian hapus [no] → Hapus jadwal ujian
 
 🎌 *Anime*
-!anime [judul] → Cari anime di MyAnimeList
+!anime [judul] → Cari anime di Kusonime
 
 👨‍💻 *GitHub Tracker*
 !github [username] → Cek profil GitHub
