@@ -395,10 +395,11 @@ async function buatStiker(msg) {
             await new Promise((resolve, reject) => {
                 execFile(ffmpegPath, [
                     '-y', '-i', tmpIn,
-                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,format=rgba',
+                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000',
+                    '-c:v', 'libwebp_anim',  // codec khusus animated WebP
                     '-loop', '0',
-                    '-preset', 'default',
-                    '-pix_fmt', 'rgba',
+                    '-pix_fmt', 'yuva420p',   // pixel format yang benar untuk animated WebP
+                    '-quality', '80',
                     '-an', '-vsync', '0',
                     '-t', '7',
                     tmpOut
@@ -1013,8 +1014,24 @@ async function handleCommand(msg) {
     else if (cmd === '!stats') { msg.reply(`📊 Total chat: ${stats.totalChats}\nTerakhir aktif: ${stats.lastActive || '-'}`); }
     else if (cmd === '!reset') { history.delete(uid); userModes.delete(uid); msg.reply("🔄 Percakapan direset!"); }
     else if (cmd === '!stiker') {
-        // Reply ke foto/GIF → jadikan stiker
-        if (msg.hasQuotedMsg) {
+        // Kasus 1: Kirim foto/video/GIF langsung + caption !stiker
+        if (msg.hasMedia) {
+            try {
+                const chat = await msg.getChat();
+                chat.sendStateTyping();
+                const stikerMedia = await buatStiker(msg);
+                if (stikerMedia) {
+                    await kirimStiker(client, msg.from, msg, stikerMedia);
+                } else {
+                    msg.reply('Aiih gagal nih, coba lagi yaa 😹');
+                }
+            } catch (e) {
+                console.error('Error stiker:', e.message);
+                msg.reply('Gagal sy buat stikernya 😹');
+            }
+        }
+        // Kasus 2: Reply ke foto/video/GIF dengan !stiker
+        else if (msg.hasQuotedMsg) {
             try {
                 const quoted = await msg.getQuotedMessage();
                 if (quoted.hasMedia) {
@@ -1027,14 +1044,14 @@ async function handleCommand(msg) {
                         msg.reply('Aiih gagal nih, coba lagi yaa 😹');
                     }
                 } else {
-                    msg.reply('Reply-nya bukan foto/GIF. Coba reply gambar dulu 😹');
+                    msg.reply('Reply-nya bukan foto/GIF/video. Coba reply media dulu 😹');
                 }
             } catch (e) {
                 console.error('Error stiker:', e.message);
                 msg.reply('Gagal sy buat stikernya 😹');
             }
         } else {
-            msg.reply('Cara pakai:\n1. Kirim foto/GIF + caption *stiker*\n2. Atau reply foto/GIF dengan *!stiker*');
+            msg.reply('Cara pakai:\n1. Kirim foto/GIF/video + caption *!stiker*\n2. Atau reply foto/GIF/video dengan *!stiker*');
         }
     }
     else if (cmd === '!storyin') {
