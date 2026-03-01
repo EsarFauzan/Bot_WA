@@ -378,44 +378,62 @@ async function buatStiker(msg) {
         if (!media) return null;
 
         const buffer = Buffer.from(media.data, 'base64');
-        const isVideo = msg.type === 'video' || (media.mimetype && media.mimetype.startsWith('video/'));
-        const isStaticGif = media.mimetype === 'image/gif';
+        const mime = media.mimetype || '';
+        const isVideo = msg.type === 'video' || msg.type === 'document' || mime.startsWith('video/');
+        const isGif = mime === 'image/gif';
 
         let webpBuffer;
 
-        if (isVideo || isStaticGif) {
-            // Pakai ffmpeg untuk konversi video/GIF → animated WebP
+        if (isVideo || isGif) {
+            // Video / GIF → animated WebP via ffmpeg
             const os = require('os');
-            const ext = isStaticGif ? '.gif' : '.mp4';
-            const tmpIn = path.join(os.tmpdir(), `stiker_in_${Date.now()}${ext}`);
-            const tmpOut = path.join(os.tmpdir(), `stiker_out_${Date.now()}.webp`);
+            const ts = Date.now();
+            // Tulis file input dengan ekstensi asli agar ffmpeg bisa deteksi codec
+            let ext = '.mp4';
+            if (isGif) ext = '.gif';
+            else if (mime.includes('webm')) ext = '.webm';
+            else if (mime.includes('3gp')) ext = '.3gp';
+            else if (mime.includes('mov') || mime.includes('quicktime')) ext = '.mov';
+
+            const tmpIn  = path.join(os.tmpdir(), `stiker_in_${ts}${ext}`);
+            const tmpOut = path.join(os.tmpdir(), `stiker_out_${ts}.webp`);
 
             fs.writeFileSync(tmpIn, buffer);
 
-            await new Promise((resolve, reject) => {
-                execFile(ffmpegPath, [
-                    '-y', '-i', tmpIn,
-                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000',
-                    '-c:v', 'libwebp_anim',  // codec khusus animated WebP
-                    '-loop', '0',
-                    '-pix_fmt', 'yuva420p',   // pixel format yang benar untuk animated WebP
-                    '-quality', '80',
-                    '-an', '-vsync', '0',
-                    '-t', '7',
-                    tmpOut
-                ], (err, stdout, stderr) => {
-                    if (err) reject(new Error(stderr || err.message));
-                    else resolve();
+            try {
+                await new Promise((resolve, reject) => {
+                    execFile(ffmpegPath, [
+                        '-y', '-i', tmpIn,
+                        '-t', '6',                // maks 6 detik
+                        '-vf', [
+                            'fps=15',             // kurangi fps agar filenya kecil
+                            'scale=512:512:force_original_aspect_ratio=decrease',
+                            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000'
+                        ].join(','),
+                        '-vcodec', 'libwebp',     // codec animated WebP yang benar
+                        '-lossless', '0',
+                        '-compression_level', '6',
+                        '-q:v', '50',
+                        '-loop', '0',
+                        '-preset', 'picture',
+                        '-an',
+                        '-vsync', '0',
+                        tmpOut
+                    ], (err, stdout, stderr) => {
+                        if (err) {
+                            console.error('FFmpeg stiker error:', stderr || err.message);
+                            reject(new Error(stderr || err.message));
+                        } else resolve();
+                    });
                 });
-            });
 
-            webpBuffer = fs.readFileSync(tmpOut);
-            fs.unlinkSync(tmpIn);
-            fs.unlinkSync(tmpOut);
+                webpBuffer = fs.readFileSync(tmpOut);
+            } finally {
+                if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
+                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+            }
         } else {
-            // Gambar biasa pakai sharp
-            // ensureAlpha() → tambah kanal alpha agar JPEG bisa background transparan
-            // fit: 'contain' → resize proporsional + padding transparan agar stiker kotak 512x512
+            // Gambar biasa → static WebP via sharp
             webpBuffer = await sharp(buffer)
                 .ensureAlpha()
                 .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -838,54 +856,78 @@ client.on('message', async msg => {
         return;
     }
 
-    // ✅ DOKUMEN VIDEO → Optimize & kirim sebagai video
+    // ✅ DOKUMEN VIDEO → cek dulu apakah mau dijadikan stiker atau di-optimize
     if (isDocument && msg.hasMedia) {
         const mime = msg._data?.mimetype || '';
         const filename = msg._data?.filename || '';
-        const isVideoDoc = mime.startsWith('video/') || /\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename);
-        if (isVideoDoc) {
+        const isVideoDoc = mime.startsWith('video/') || mime === 'image/gif' ||
+            /\.(mp4|mkv|mov|avi|3gp|webm|gif)$/i.test(filename);
+
+        if (!isVideoDoc) return; // dokumen bukan video/gif → abaikan
+
+        // Kalau caption "stiker" → jadikan stiker animated
+        if (isStikerRequest) {
             try {
                 const chat = await msg.getChat();
                 chat.sendStateTyping();
-
-                // Cek ukuran file — skip jika > 50MB
-                const fileSize = msg._data?.size || msg._data?.fileSizeBytes || 0;
-                if (fileSize > 50 * 1024 * 1024) {
-                    return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
+                const stikerMedia = await buatStiker(msg);
+                if (stikerMedia) {
+                    await kirimStiker(client, userId, msg, stikerMedia);
+                } else {
+                    msg.reply('Aiih gagal buat stikernya 😹 coba lagi yaa');
                 }
-
-                await msg.reply('Bentar sy optimize videonya dulu 🤭 sabar yaa...');
-
-                const media = await msg.downloadMedia();
-                if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
-
-                const os = require('os');
-                const ts = Date.now();
-                const tmpIn = path.join(os.tmpdir(), `stiker_vi_${ts}.mp4`);
-                const tmpOut = path.join(os.tmpdir(), `stiker_vo_${ts}.mp4`);
-                fs.writeFileSync(tmpIn, Buffer.from(media.data, 'base64'));
-
-                try {
-                    await optimizeVideo(tmpIn, tmpOut);
-
-                    const outputBuffer = fs.readFileSync(tmpOut);
-                    const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
-
-                    await client.sendMessage(userId, optimizedMedia, {
-                        sendMediaAsDocument: false,
-                        caption: 'Nih videonya 🤭 tinggal download trus upload ke story!'
-                    });
-                } finally {
-                    if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
-                    if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-                }
-            } catch (err) {
-                console.error('Error optimize video:', err.message);
-                msg.reply('Aduh error sy proses videonya 😹 coba lagi yaa');
+            } catch (e) {
+                console.error('Error stiker dokumen:', e.message);
+                msg.reply('Gagal sy buat stikernya 😹');
             }
             return;
         }
-        return; // dokumen bukan video → abaikan
+
+        // Kalau tidak → optimize & kirim sebagai video story
+        if (!mime.startsWith('video/') && !/\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename)) {
+            return; // GIF tanpa caption stiker → abaikan
+        }
+
+        try {
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+
+            // Cek ukuran file — skip jika > 50MB
+            const fileSize = msg._data?.size || msg._data?.fileSizeBytes || 0;
+            if (fileSize > 50 * 1024 * 1024) {
+                return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
+            }
+
+            await msg.reply('Bentar sy optimize videonya dulu 🤭 sabar yaa...');
+
+            const media = await msg.downloadMedia();
+            if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
+
+            const os = require('os');
+            const ts = Date.now();
+            const tmpIn = path.join(os.tmpdir(), `stiker_vi_${ts}.mp4`);
+            const tmpOut = path.join(os.tmpdir(), `stiker_vo_${ts}.mp4`);
+            fs.writeFileSync(tmpIn, Buffer.from(media.data, 'base64'));
+
+            try {
+                await optimizeVideo(tmpIn, tmpOut);
+
+                const outputBuffer = fs.readFileSync(tmpOut);
+                const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
+
+                await client.sendMessage(userId, optimizedMedia, {
+                    sendMediaAsDocument: false,
+                    caption: 'Nih videonya 🤭 tinggal download trus upload ke story!'
+                });
+            } finally {
+                if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+            }
+        } catch (err) {
+            console.error('Error optimize video:', err.message);
+            msg.reply('Aduh error sy proses videonya 😹 coba lagi yaa');
+        }
+        return;
     }
 
     // ✅ Foto/GIF + caption "stiker" → langsung dijadikan stiker
