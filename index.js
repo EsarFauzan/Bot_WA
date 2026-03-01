@@ -428,8 +428,8 @@ async function buatStiker(msg) {
 async function kirimStiker(client, userId, msg, stikerMedia) {
     await client.sendMessage(userId, stikerMedia, {
         sendMediaAsSticker: true,
-        stickerName: 'EsarBot',
-        stickerAuthor: 'EsarFauzan'
+        stickerName: 'EFstiker',
+        stickerAuthor: 'G00Dbooy'
     });
     msg.reply('Nih stikernya😹');
 }
