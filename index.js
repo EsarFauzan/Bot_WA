@@ -395,9 +395,10 @@ async function buatStiker(msg) {
             await new Promise((resolve, reject) => {
                 execFile(ffmpegPath, [
                     '-y', '-i', tmpIn,
-                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease',
+                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000,format=rgba',
                     '-loop', '0',
                     '-preset', 'default',
+                    '-pix_fmt', 'rgba',
                     '-an', '-vsync', '0',
                     '-t', '7',
                     tmpOut
@@ -412,9 +413,11 @@ async function buatStiker(msg) {
             fs.unlinkSync(tmpOut);
         } else {
             // Gambar biasa pakai sharp
-            // fit: 'inside' → resize proporsional tanpa padding, tidak ada background hitam
+            // ensureAlpha() → tambah kanal alpha agar JPEG bisa background transparan
+            // fit: 'contain' → resize proporsional + padding transparan agar stiker kotak 512x512
             webpBuffer = await sharp(buffer)
-                .resize(512, 512, { fit: 'inside', withoutEnlargement: false })
+                .ensureAlpha()
+                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
                 .webp({ quality: 80 })
                 .toBuffer();
         }
