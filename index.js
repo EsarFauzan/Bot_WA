@@ -412,7 +412,9 @@ async function buatStiker(msg) {
             fs.unlinkSync(tmpOut);
         } else {
             // Gambar biasa pakai sharp
+            // .ensureAlpha() wajib agar JPEG (yg tidak punya alpha) bisa background transparan
             webpBuffer = await sharp(buffer)
+                .ensureAlpha()
                 .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
                 .webp()
                 .toBuffer();
