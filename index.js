@@ -1631,6 +1631,72 @@ async function handleCommand(msg) {
     else if (cmd === '!github') {
         msg.reply('Cara pakai: *!github [username]*\n\nContoh:\n!github torvalds\n!github EsarFauzan');
     }
+    // ======== ANIME SEARCH (KUSONIME) ========
+    else if (cmd.startsWith('!anime ')) {
+        const query = msg.body.trim().slice(7).trim();
+        if (!query) return msg.reply('Cara pakai: *!anime [judul]*\nContoh: !anime naruto');
+
+        try {
+            const cheerio = require('cheerio');
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+            await msg.reply(`🔍 Bentar sy cari *${query}* di Kusonime dulu 🤭 sabar jo...`);
+
+            const searchUrl = `https://kusonime.com/?s=${encodeURIComponent(query)}`;
+            const res = await axios.get(searchUrl, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+                },
+                timeout: 15000
+            });
+
+            const $ = cheerio.load(res.data);
+            const results = [];
+
+            $('.bsx').each((i, el) => {
+                if (i >= 5) return false;
+                const title  = $(el).find('.tt h2').text().trim() || $(el).find('a').attr('title') || '';
+                const url    = $(el).find('a').attr('href') || '';
+                const type   = $(el).find('.typez').text().trim() || '';
+                const score  = $(el).find('.scr').text().trim() || '';
+                const status = $(el).find('.sb .stat').text().trim() || '';
+                if (title && url) results.push({ title, url, type, score, status });
+            });
+
+            if (results.length === 0) {
+                return msg.reply(`Anime *"${query}"* tidak ditemukan di Kusonime 😹\nCoba judul lain jo`);
+            }
+
+            let teks = `🌏 *Hasil Pencarian: "${query}"*\n`;
+            teks += `📊 Ditemukan ${results.length} anime\n`;
+            teks += `─────────────────────\n\n`;
+
+            for (let i = 0; i < results.length; i++) {
+                const a = results[i];
+                teks += `*${i + 1}. ${a.title}*\n`;
+                if (a.type)   teks += `📺 Tipe   : ${a.type}\n`;
+                if (a.score)  teks += `⭐ Score  : ${a.score}\n`;
+                if (a.status) teks += `📌 Status : ${a.status}\n`;
+                teks += `🔗 ${a.url}\n\n`;
+            }
+
+            teks += `─────────────────────\n`;
+            teks += `_Sumber: kusonime.com_`;
+
+            msg.reply(teks);
+
+        } catch (err) {
+            console.error('Error !anime:', err.message);
+            if (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED') {
+                msg.reply('Koneksi ke Kusonime timeout 😹 coba lagi jo');
+            } else {
+                msg.reply('Aduh gagal cari anime ee 😹 coba lagi jo');
+            }
+        }
+    }
+    else if (cmd === '!anime') {
+        msg.reply('Cara pakai: *!anime [judul]*\n\nContoh:\n!anime naruto\n!anime one piece\n!anime attack on titan');
+    }
     else if (cmd === '!rmbg') {
         const apiKey = process.env.CLIPDROP_API_KEY;
         if (!apiKey) return msg.reply('API key Clipdrop belum diset 😹');
@@ -1963,6 +2029,9 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !ujian → Lihat countdown ujian
 !ujian tambah [nama] | [DD-MM-YYYY] → Tambah jadwal
 !ujian hapus [no] → Hapus jadwal ujian
+
+🎌 *Anime*
+!anime [judul] → Cari anime di Kusonime
 
 👨‍💻 *GitHub Tracker*
 !github [username] → Cek profil GitHub
