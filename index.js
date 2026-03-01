@@ -404,13 +404,9 @@ async function buatStiker(msg) {
                 await new Promise((resolve, reject) => {
                     execFile(ffmpegPath, [
                         '-y', '-i', tmpIn,
-                        '-t', '6',                // maks 6 detik
-                        '-vf', [
-                            'fps=15',             // kurangi fps agar filenya kecil
-                            'scale=512:512:force_original_aspect_ratio=decrease',
-                            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000'
-                        ].join(','),
-                        '-vcodec', 'libwebp',     // codec animated WebP yang benar
+                        '-t', '6',
+                        '-vf', 'scale=512:512:force_original_aspect_ratio=decrease',
+                        '-vcodec', 'libwebp',
                         '-lossless', '0',
                         '-compression_level', '6',
                         '-q:v', '50',
@@ -433,10 +429,9 @@ async function buatStiker(msg) {
                 if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
             }
         } else {
-            // Gambar biasa → static WebP via sharp
+            // Gambar biasa → static WebP via sharp, tanpa padding agar tidak ada background hitam
             webpBuffer = await sharp(buffer)
-                .ensureAlpha()
-                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .resize(512, 512, { fit: 'inside', withoutEnlargement: false })
                 .webp({ quality: 80 })
                 .toBuffer();
         }
