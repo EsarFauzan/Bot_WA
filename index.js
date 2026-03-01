@@ -581,14 +581,25 @@ async function removeBackground(imageBuffer) {
 // ============== UPSCALE IMAGE (CLIPDROP) ==============
 async function upscaleImage(imageBuffer) {
     const FormData = require('form-data');
+    const sharp = require('sharp');
+
+    // Baca dimensi asli agar rasio tidak berubah
+    const meta = await sharp(imageBuffer).metadata();
+    const origW = meta.width || 1024;
+    const origH = meta.height || 1024;
+
+    // Scale 4x, tapi batasi sisi terpanjang maks 2048
+    const scale = Math.min(4, 2048 / Math.max(origW, origH));
+    const targetW = Math.round(origW * scale);
+    const targetH = Math.round(origH * scale);
 
     const form = new FormData();
     form.append('image_file', imageBuffer, {
         filename: 'image.png',
         contentType: 'image/png'
     });
-    form.append('target_width', 2048);
-    form.append('target_height', 2048);
+    form.append('target_width', targetW);
+    form.append('target_height', targetH);
 
     const res = await axios.post('https://clipdrop-api.co/image-upscaling/v1/upscale', form, {
         headers: {
@@ -1650,7 +1661,7 @@ async function handleCommand(msg) {
         } else if (msg.hasMedia && msg.type === 'image') {
             targetMsg = msg;
         } else {
-            return msg.reply('Cara pakai:\n• Kirim foto + caption *!upscale*\n• Atau *reply foto* dengan *!upscale*\n\n_Foto akan diperbesar kualitasnya hingga 2048px_ 🔍');
+            return msg.reply('Cara pakai:\n• Kirim foto + caption *!upscale*\n• Atau *reply foto* dengan *!upscale*\n\n_Foto akan diperbesar kualitasnya hingga 4x resolusi asli_ 🔍');
         }
 
         try {
@@ -1667,7 +1678,7 @@ async function handleCommand(msg) {
 
             const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
             await client.sendMessage(uid, resultMedia, {
-                caption: 'Nih fotonya ee 🔍 kualitas udah ditingkatkan ke 2048px!'
+                caption: 'Nih fotonya ee 🔍 kualitas udah ditingkatkan, rasio tetap sama!'
             });
 
         } catch (err) {
