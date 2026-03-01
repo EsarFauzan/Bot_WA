@@ -1637,32 +1637,56 @@ async function handleCommand(msg) {
         if (!query) return msg.reply('Cara pakai: *!anime [judul]*\nContoh: !anime naruto');
 
         try {
+            const cheerio = require('cheerio');
             const chat = await msg.getChat();
             chat.sendStateTyping();
             await msg.reply(`🔍 Bentar sy cari *${query}* di Kusonime dulu 🤭 sabar jo...`);
 
-            const searchUrl = `https://kusonime-api-phi.vercel.app/api/search?s=${encodeURIComponent(query)}`;
-            const res = await axios.get(searchUrl, { timeout: 15000 });
+            const searchUrl = `https://kusonime.com/page/1/?s=${encodeURIComponent(query)}&post_type=post`;
+            const res = await axios.get(searchUrl, {
+                timeout: 20000,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Referer': 'https://kusonime.com/',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache',
+                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"Windows"',
+                    'Sec-Fetch-Dest': 'document',
+                    'Sec-Fetch-Mode': 'navigate',
+                    'Sec-Fetch-Site': 'same-origin',
+                    'Upgrade-Insecure-Requests': '1'
+                }
+            });
 
-            const listAnime = res.data?.data?.listAnime || [];
+            const $ = cheerio.load(res.data);
+            const results = [];
 
-            if (listAnime.length === 0) {
+            $('.vezone .venz .kover').each((i, el) => {
+                if (i >= 5) return false;
+                const title  = $(el).find('.thumb a').attr('title') || $(el).find('.tt h2').text().trim() || '';
+                const url    = $(el).find('.thumb a').attr('href') || $(el).find('a').first().attr('href') || '';
+                const genres = [];
+                $(el).find('.content p:nth-child(4) a').each((j, ge) => genres.push($(ge).text().trim()));
+                if (title && url) results.push({ title, url, genres });
+            });
+
+            if (results.length === 0) {
                 return msg.reply(`Anime *"${query}"* tidak ditemukan di Kusonime 😹\nCoba judul lain jo`);
             }
 
-            const hasil = listAnime.slice(0, 5);
-
             let teks = `🌏 *Hasil Pencarian: "${query}"*\n`;
-            teks += `📊 Ditemukan ${hasil.length} anime\n`;
+            teks += `📊 Ditemukan ${results.length} anime\n`;
             teks += `─────────────────────\n\n`;
 
-            for (let i = 0; i < hasil.length; i++) {
-                const a = hasil[i];
+            for (let i = 0; i < results.length; i++) {
+                const a = results[i];
                 teks += `*${i + 1}. ${a.title}*\n`;
-                if (a.genres && a.genres.length > 0) {
-                    const genreList = a.genres.map(g => g.name).join(', ');
-                    teks += `🎭 Genre  : ${genreList}\n`;
-                }
+                if (a.genres.length > 0) teks += `🎭 Genre : ${a.genres.join(', ')}\n`;
                 teks += `🔗 ${a.url}\n\n`;
             }
 
@@ -1675,6 +1699,8 @@ async function handleCommand(msg) {
             console.error('Error !anime:', err.message);
             if (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED') {
                 msg.reply('Koneksi ke Kusonime timeout 😹 coba lagi jo');
+            } else if (err.response?.status === 403) {
+                msg.reply('Kusonime lagi block akses bot 😹 coba lagi nanti jo');
             } else {
                 msg.reply('Aduh gagal cari anime ee 😹 coba lagi jo');
             }
