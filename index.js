@@ -1657,14 +1657,9 @@ async function handleCommand(msg) {
             for (let i = 0; i < results.length; i++) {
                 const a = results[i];
 
-                // Buat slug Kusonime dari judul
-                const baseTitle = a.title_indonesian || a.title || a.title_english || '';
-                const slug = baseTitle
-                    .toLowerCase()
-                    .replace(/[^a-z0-9\s-]/g, '')
-                    .trim()
-                    .replace(/\s+/g, '-');
-                const kusonimeUrl = `https://kusonime.com/${slug}-subtitle-indonesia/`;
+                // Pakai search Kusonime agar link selalu tepat
+                const searchTitle = a.title_indonesian || a.title_english || a.title || '';
+                const kusonimeUrl = `https://kusonime.com/?s=${encodeURIComponent(searchTitle)}`;
 
                 const genres = a.genres?.map(g => g.name).join(', ') || '-';
                 const eps    = a.episodes ? `${a.episodes} eps` : '?? eps';
