@@ -1789,7 +1789,65 @@ async function handleCommand(msg) {
         }
     }
     else if (cmd === '!qr') {
-        msg.reply('Cara pakai: *!qr [teks/link]*\nContoh:\n!qr https://google.com\n!qr Halo Dunia');
+        // Cek apakah ada foto → upload ke ImgBB → buat QR dari URL gambar
+        let targetMsg = null;
+
+        if (msg.hasQuotedMsg) {
+            try {
+                const quoted = await msg.getQuotedMessage();
+                if (quoted.hasMedia && quoted.type === 'image') targetMsg = quoted;
+            } catch (e) {}
+        } else if (msg.hasMedia && msg.type === 'image') {
+            targetMsg = msg;
+        }
+
+        if (targetMsg) {
+            const imgbbKey = process.env.IMGBB_API_KEY;
+            if (!imgbbKey) return msg.reply('API key ImgBB belum diset 😹\nTambah IMGBB_API_KEY di file .env');
+
+            try {
+                const QRCode = require('qrcode');
+                const chat = await msg.getChat();
+                chat.sendStateTyping();
+                await msg.reply('Bentar sy upload gambarnya dulu baru buat QR-nya 🤭 sabar jo...');
+
+                const media = await targetMsg.downloadMedia();
+                if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+
+                // Upload ke ImgBB
+                const FormData = require('form-data');
+                const form = new FormData();
+                form.append('image', media.data); // base64 langsung
+                form.append('key', imgbbKey);
+
+                const uploadRes = await axios.post('https://api.imgbb.com/1/upload', form, {
+                    headers: form.getHeaders(),
+                    timeout: 30000
+                });
+
+                const imageUrl = uploadRes.data?.data?.url;
+                if (!imageUrl) return msg.reply('Gagal upload gambarnya 😹 coba lagi jo');
+
+                // Buat QR dari URL gambar
+                const qrBuffer = await QRCode.toBuffer(imageUrl, {
+                    type: 'png',
+                    width: 512,
+                    margin: 2,
+                    color: { dark: '#000000', light: '#FFFFFF' }
+                });
+
+                const qrMedia = new MessageMedia('image/png', qrBuffer.toString('base64'), 'qrcode.png');
+                await client.sendMessage(uid, qrMedia, {
+                    caption: `✅ *QR Code gambar berhasil dibuat!*\n\nScan QR-nya → gambar langsung muncul 🖼️`
+                });
+
+            } catch (err) {
+                console.error('Error !qr gambar:', err.message);
+                msg.reply('Aduh gagal buat QR dari gambar ee 😹 coba lagi jo');
+            }
+        } else {
+            msg.reply('Cara pakai:\n• *!qr [teks/link]* → Buat QR dari teks/link\n• Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️\n\nContoh:\n!qr https://google.com\n!qr Halo Dunia');
+        }
     }
     // ======== KOMPRES GAMBAR ========
     else if (cmd === '!kompres') {
