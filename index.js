@@ -438,14 +438,15 @@ async function kirimStiker(client, userId, msg, stikerMedia) {
 async function optimizeVideo(inputPath, outputPath) {
     const { execFile } = require('child_process');
     return new Promise((resolve, reject) => {
-        execFile(ffmpegPath, [
+        const proc = execFile(ffmpegPath, [
             '-y',
             '-i', inputPath,
             '-c:v', 'libx264',
-            '-crf', '18',
-            '-preset', 'slow',
+            '-crf', '28',          // lebih ringan (18 terlalu berat untuk VPS 1GB)
+            '-preset', 'ultrafast', // hemat CPU & RAM
+            '-threads', '1',        // batasi thread agar tidak OOM
             '-c:a', 'aac',
-            '-b:a', '192k',
+            '-b:a', '128k',
             '-movflags', '+faststart',
             '-pix_fmt', 'yuv420p',
             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
@@ -454,6 +455,14 @@ async function optimizeVideo(inputPath, outputPath) {
             if (err) reject(new Error(stderr || err.message));
             else resolve();
         });
+
+        // Timeout 3 menit — kalau lebih, kill proses
+        const timeout = setTimeout(() => {
+            proc.kill('SIGKILL');
+            reject(new Error('FFmpeg timeout setelah 3 menit'));
+        }, 3 * 60 * 1000);
+
+        proc.on('close', () => clearTimeout(timeout));
     });
 }
 
@@ -822,6 +831,13 @@ client.on('message', async msg => {
             try {
                 const chat = await msg.getChat();
                 chat.sendStateTyping();
+
+                // Cek ukuran file — skip jika > 50MB
+                const fileSize = msg._data?.size || msg._data?.fileSizeBytes || 0;
+                if (fileSize > 50 * 1024 * 1024) {
+                    return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
+                }
+
                 await msg.reply('Bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
                 const media = await msg.downloadMedia();
@@ -841,7 +857,7 @@ client.on('message', async msg => {
 
                     await client.sendMessage(userId, optimizedMedia, {
                         sendMediaAsDocument: false,
-                        caption: 'Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!'
+                        caption: 'Nih videonya 🤭 tinggal download trus upload ke story!'
                     });
                 } finally {
                     if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -1023,6 +1039,13 @@ async function handleCommand(msg) {
             if (!isVideoDoc) {
                 return msg.reply('Nda bisa yaa, harus video atau dokumen video 😹');
             }
+
+            // Cek ukuran file — skip jika > 50MB
+            const fileSize = quoted._data?.size || quoted._data?.fileSizeBytes || 0;
+            if (fileSize > 50 * 1024 * 1024) {
+                return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
+            }
+
             const chat = await msg.getChat();
             chat.sendStateTyping();
             await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
