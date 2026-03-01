@@ -1637,70 +1637,61 @@ async function handleCommand(msg) {
         if (!query) return msg.reply('Cara pakai: *!anime [judul]*\nContoh: !anime naruto');
 
         try {
-            const cheerio = require('cheerio');
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply(`🔍 Bentar sy cari *${query}* di Kusonime dulu 🤭 sabar jo...`);
+            await msg.reply(`🔍 Bentar sy cari *${query}* dulu 🤭 sabar jo...`);
 
-            const searchUrl = `https://kusonime.com/page/1/?s=${encodeURIComponent(query)}&post_type=post`;
-            const res = await axios.get(searchUrl, {
-                timeout: 20000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                    'Accept-Encoding': 'gzip, deflate, br',
-                    'Referer': 'https://kusonime.com/',
-                    'Cache-Control': 'no-cache',
-                    'Pragma': 'no-cache',
-                    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24"',
-                    'sec-ch-ua-mobile': '?0',
-                    'sec-ch-ua-platform': '"Windows"',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate',
-                    'Sec-Fetch-Site': 'same-origin',
-                    'Upgrade-Insecure-Requests': '1'
-                }
+            const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=5&sfw=true`, {
+                timeout: 15000
             });
 
-            const $ = cheerio.load(res.data);
-            const results = [];
-
-            $('.vezone .venz .kover').each((i, el) => {
-                if (i >= 5) return false;
-                const title  = $(el).find('.thumb a').attr('title') || $(el).find('.tt h2').text().trim() || '';
-                const url    = $(el).find('.thumb a').attr('href') || $(el).find('a').first().attr('href') || '';
-                const genres = [];
-                $(el).find('.content p:nth-child(4) a').each((j, ge) => genres.push($(ge).text().trim()));
-                if (title && url) results.push({ title, url, genres });
-            });
-
-            if (results.length === 0) {
-                return msg.reply(`Anime *"${query}"* tidak ditemukan di Kusonime 😹\nCoba judul lain jo`);
+            const results = res.data?.data;
+            if (!results || results.length === 0) {
+                return msg.reply(`Anime *"${query}"* tidak ditemukan 😹\nCoba judul lain jo`);
             }
 
-            let teks = `🌏 *Hasil Pencarian: "${query}"*\n`;
+            let teks = `🎌 *Hasil Pencarian: "${query}"*\n`;
             teks += `📊 Ditemukan ${results.length} anime\n`;
             teks += `─────────────────────\n\n`;
 
             for (let i = 0; i < results.length; i++) {
                 const a = results[i];
+
+                // Buat slug Kusonime dari judul
+                const baseTitle = a.title_indonesian || a.title || a.title_english || '';
+                const slug = baseTitle
+                    .toLowerCase()
+                    .replace(/[^a-z0-9\s-]/g, '')
+                    .trim()
+                    .replace(/\s+/g, '-');
+                const kusonimeUrl = `https://kusonime.com/${slug}-subtitle-indonesia/`;
+
+                const genres = a.genres?.map(g => g.name).join(', ') || '-';
+                const eps    = a.episodes ? `${a.episodes} eps` : '?? eps';
+                const tahun  = a.year || a.aired?.prop?.from?.year || '-';
+
                 teks += `*${i + 1}. ${a.title}*\n`;
-                if (a.genres.length > 0) teks += `🎭 Genre : ${a.genres.join(', ')}\n`;
-                teks += `🔗 ${a.url}\n\n`;
+                if (a.title_indonesian && a.title_indonesian !== a.title)
+                    teks += `📝 ${a.title_indonesian}\n`;
+                teks += `📺 ${a.type || '-'} • ${eps} • ${tahun}\n`;
+                teks += `📌 Status : ${a.status || '-'}\n`;
+                if (a.score) teks += `⭐ Score  : ${a.score}/10\n`;
+                teks += `🎭 Genre  : ${genres}\n`;
+                teks += `🔗 MAL    : ${a.url}\n`;
+                teks += `⬇️ Download: ${kusonimeUrl}\n\n`;
             }
 
             teks += `─────────────────────\n`;
-            teks += `_Sumber: kusonime.com_`;
+            teks += `_Data: MyAnimeList | Download: Kusonime_`;
 
             msg.reply(teks);
 
         } catch (err) {
             console.error('Error !anime:', err.message);
             if (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED') {
-                msg.reply('Koneksi ke Kusonime timeout 😹 coba lagi jo');
-            } else if (err.response?.status === 403) {
-                msg.reply('Kusonime lagi block akses bot 😹 coba lagi nanti jo');
+                msg.reply('Koneksi timeout 😹 coba lagi jo');
+            } else if (err.response?.status === 429) {
+                msg.reply('Terlalu banyak request 😹 tunggu sebentar lalu coba lagi jo');
             } else {
                 msg.reply('Aduh gagal cari anime ee 😹 coba lagi jo');
             }
