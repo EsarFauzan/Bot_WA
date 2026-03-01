@@ -1926,6 +1926,7 @@ Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !upscale → Perbesar kualitas foto hingga 2048px 🔍
 !kompres → Kompres ukuran foto 📦
 !qr [teks/link] → Buat QR Code dari teks/link
+Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 
 🎭 *Ganti Mode*
 !mode normal → Mode biasa
