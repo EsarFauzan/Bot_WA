@@ -395,7 +395,7 @@ async function buatStiker(msg) {
             await new Promise((resolve, reject) => {
                 execFile(ffmpegPath, [
                     '-y', '-i', tmpIn,
-                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000',
+                    '-vf', 'scale=512:512:force_original_aspect_ratio=decrease',
                     '-loop', '0',
                     '-preset', 'default',
                     '-an', '-vsync', '0',
@@ -412,11 +412,10 @@ async function buatStiker(msg) {
             fs.unlinkSync(tmpOut);
         } else {
             // Gambar biasa pakai sharp
-            // .ensureAlpha() wajib agar JPEG (yg tidak punya alpha) bisa background transparan
+            // fit: 'inside' → resize proporsional tanpa padding, tidak ada background hitam
             webpBuffer = await sharp(buffer)
-                .ensureAlpha()
-                .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-                .webp()
+                .resize(512, 512, { fit: 'inside', withoutEnlargement: false })
+                .webp({ quality: 80 })
                 .toBuffer();
         }
 
