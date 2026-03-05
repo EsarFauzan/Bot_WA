@@ -402,20 +402,20 @@ async function buatStiker(msg) {
 
             try {
                 await new Promise((resolve, reject) => {
-                    execFile(ffmpegPath, [
+                    const proc = execFile(ffmpegPath, [
                         '-y', '-i', tmpIn,
                         '-t', '6',
                         '-vf', [
-                            'fps=30',
+                            'fps=15',
                             'scale=512:512:force_original_aspect_ratio=decrease',
-                            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=black@0.0',
-                            'format=rgba'   // wajib agar libwebp tahu ada alpha channel
+                            'format=rgba',   // konversi ke rgba SEBELUM pad agar alpha bisa dipakai
+                            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000'
                         ].join(','),
                         '-vcodec', 'libwebp',
-                        '-pix_fmt', 'yuva420p', // pixel format WebP dengan alpha
+                        '-pix_fmt', 'yuva420p',
                         '-lossless', '0',
-                        '-compression_level', '6',
-                        '-q:v', '50',
+                        '-compression_level', '4',
+                        '-q:v', '40',
                         '-loop', '0',
                         '-preset', 'picture',
                         '-an',
@@ -423,10 +423,19 @@ async function buatStiker(msg) {
                         tmpOut
                     ], (err, stdout, stderr) => {
                         if (err) {
-                            console.error('FFmpeg stiker error:', stderr || err.message);
+                            console.error('FFmpeg stiker stderr:', stderr);
+                            console.error('FFmpeg stiker error:', err.message);
                             reject(new Error(stderr || err.message));
                         } else resolve();
                     });
+
+                    // Timeout 60 detik
+                    const timeout = setTimeout(() => {
+                        proc.kill('SIGKILL');
+                        reject(new Error('FFmpeg stiker timeout 60s'));
+                    }, 60000);
+
+                    proc.on('close', () => clearTimeout(timeout));
                 });
 
                 webpBuffer = fs.readFileSync(tmpOut);
