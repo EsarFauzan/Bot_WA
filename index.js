@@ -401,11 +401,11 @@ async function buatStiker(msg) {
             fs.writeFileSync(tmpIn, buffer);
 
             try {
-                // Coba beberapa level kualitas sampai file < 500KB
+                // Coba beberapa level kualitas sampai file < 1MB
                 const attempts = [
-                    { fps: 10, q: 25, size: 380 },
-                    { fps: 8,  q: 15, size: 256 },
-                    { fps: 6,  q: 10, size: 200 }
+                    { fps: 30, q: 50, size: 512 },
+                    { fps: 30, q: 35, size: 512 },
+                    { fps: 30, q: 20, size: 512 }
                 ];
 
                 for (let a = 0; a < attempts.length; a++) {
@@ -449,7 +449,7 @@ async function buatStiker(msg) {
                     const fileSize = fs.statSync(tmpOut).size;
                     console.log(`Stiker attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
                     
-                    if (fileSize <= 500 * 1024) break; // < 500KB → OK
+                    if (fileSize <= 1024 * 1024) break; // < 1MB → OK
                     if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
                 }
 
