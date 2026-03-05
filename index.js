@@ -401,42 +401,57 @@ async function buatStiker(msg) {
             fs.writeFileSync(tmpIn, buffer);
 
             try {
-                await new Promise((resolve, reject) => {
-                    const proc = execFile(ffmpegPath, [
-                        '-y', '-i', tmpIn,
-                        '-t', '6',
-                        '-vf', [
-                            'fps=30',
-                            'scale=512:512:force_original_aspect_ratio=decrease',
-                            'format=rgba',   // konversi ke rgba SEBELUM pad agar alpha bisa dipakai
-                            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000'
-                        ].join(','),
-                        '-vcodec', 'libwebp',
-                        '-pix_fmt', 'yuva420p',
-                        '-lossless', '0',
-                        '-compression_level', '4',
-                        '-q:v', '40',
-                        '-loop', '0',
-                        '-preset', 'picture',
-                        '-an',
-                        '-vsync', '0',
-                        tmpOut
-                    ], (err, stdout, stderr) => {
-                        if (err) {
-                            console.error('FFmpeg stiker stderr:', stderr);
-                            console.error('FFmpeg stiker error:', err.message);
-                            reject(new Error(stderr || err.message));
-                        } else resolve();
+                // Coba beberapa level kualitas sampai file < 500KB
+                const attempts = [
+                    { fps: 10, q: 25, size: 380 },
+                    { fps: 8,  q: 15, size: 256 },
+                    { fps: 6,  q: 10, size: 200 }
+                ];
+
+                for (let a = 0; a < attempts.length; a++) {
+                    const { fps, q, size } = attempts[a];
+                    
+                    await new Promise((resolve, reject) => {
+                        const proc = execFile(ffmpegPath, [
+                            '-y', '-i', tmpIn,
+                            '-t', '5',
+                            '-vf', [
+                                `fps=${fps}`,
+                                `scale=${size}:${size}:force_original_aspect_ratio=decrease`,
+                                'format=rgba',
+                                `pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`
+                            ].join(','),
+                            '-vcodec', 'libwebp',
+                            '-pix_fmt', 'yuva420p',
+                            '-lossless', '0',
+                            '-compression_level', '6',
+                            '-q:v', String(q),
+                            '-loop', '0',
+                            '-preset', 'picture',
+                            '-an',
+                            '-vsync', '0',
+                            tmpOut
+                        ], (err, stdout, stderr) => {
+                            if (err) {
+                                console.error('FFmpeg stiker stderr:', stderr);
+                                reject(new Error(stderr || err.message));
+                            } else resolve();
+                        });
+
+                        const timeout = setTimeout(() => {
+                            proc.kill('SIGKILL');
+                            reject(new Error('FFmpeg stiker timeout 60s'));
+                        }, 60000);
+
+                        proc.on('close', () => clearTimeout(timeout));
                     });
 
-                    // Timeout 60 detik
-                    const timeout = setTimeout(() => {
-                        proc.kill('SIGKILL');
-                        reject(new Error('FFmpeg stiker timeout 60s'));
-                    }, 60000);
-
-                    proc.on('close', () => clearTimeout(timeout));
-                });
+                    const fileSize = fs.statSync(tmpOut).size;
+                    console.log(`Stiker attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
+                    
+                    if (fileSize <= 500 * 1024) break; // < 500KB → OK
+                    if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
+                }
 
                 webpBuffer = fs.readFileSync(tmpOut);
             } finally {
