@@ -406,7 +406,7 @@ async function buatStiker(msg) {
                         '-y', '-i', tmpIn,
                         '-t', '6',
                         '-vf', [
-                            'fps=15',
+                            'fps=30',
                             'scale=512:512:force_original_aspect_ratio=decrease',
                             'format=rgba',   // konversi ke rgba SEBELUM pad agar alpha bisa dipakai
                             'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=0x00000000'
