@@ -1719,6 +1719,223 @@ async function handleCommand(msg) {
     else if (cmd === '!anime') {
         msg.reply('Cara pakai: *!anime [judul]*\n\nContoh:\n!anime naruto\n!anime one piece\n!anime attack on titan');
     }
+    else if (cmd === '!zikir' || cmd.startsWith('!zikir ')) {
+        const sub = cmd.slice(7).trim();
+
+        const ZIKIR = {
+            pagi: {
+                judul: '🌅 ZIKIR PAGI',
+                isi: [
+                    {
+                        nama: 'Ayat Kursi (1x)',
+                        arab: 'اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ',
+                        latin: 'Allahu laa ilaaha illaa huwal hayyul qayyuum, laa ta\'khudzuhuu sinatuw walaa nawm',
+                        arti: 'Allah, tidak ada tuhan selain Dia Yang Maha Hidup lagi terus-menerus mengurus makhluk-Nya. Dia tidak dilanda oleh kantuk dan tidak pula oleh tidur.',
+                        faedah: 'Barang siapa membacanya setiap pagi, ia akan dijaga dari gangguan setan hingga sore hari'
+                    },
+                    {
+                        nama: 'Tasbih, Tahmid, Tahlil, Takbir (100x)',
+                        arab: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ',
+                        latin: 'Subhaanallaahi wa bihamdih',
+                        arti: 'Maha Suci Allah dan segala puji bagi-Nya',
+                        faedah: 'Dosa-dosanya akan diampuni meskipun sebanyak buih di lautan (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Sayyidul Istighfar (1x)',
+                        arab: 'اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ خَلَقْتَنِي وَأَنَا عَبْدُكَ',
+                        latin: 'Allahumma anta rabbii laa ilaaha illaa anta, khalaqtanii wa ana abduk',
+                        arti: 'Ya Allah, Engkau adalah Tuhanku, tidak ada tuhan selain Engkau. Engkau telah menciptakanku dan aku adalah hamba-Mu',
+                        faedah: 'Jika dibaca di pagi hari dengan penuh keyakinan lalu meninggal pada hari itu, maka ia termasuk ahli surga (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Doa Pagi (1x)',
+                        arab: 'أَصْبَحْنَا وَأَصْبَحَ الْمُلْكُ لِلَّهِ وَالْحَمْدُ لِلَّهِ',
+                        latin: 'Ash-bahnaa wa ash-bahal mulku lillaah, walhamdulillaah',
+                        arti: 'Kami berpagi hari dan berpagi hari pula kerajaan ini hanya milik Allah, segala puji bagi Allah',
+                        faedah: 'Doa yang diajarkan Rasulullah ﷺ setiap pagi (HR. Muslim)'
+                    }
+                ]
+            },
+            sore: {
+                judul: '🌆 ZIKIR SORE',
+                isi: [
+                    {
+                        nama: 'Doa Sore (1x)',
+                        arab: 'أَمْسَيْنَا وَأَمْسَى الْمُلْكُ لِلَّهِ وَالْحَمْدُ لِلَّهِ',
+                        latin: 'Amsaynaa wa amsal mulku lillaah, walhamdulillaah',
+                        arti: 'Kami bersore hari dan bersore hari pula kerajaan ini hanya milik Allah, segala puji bagi Allah',
+                        faedah: 'Doa yang diajarkan Rasulullah ﷺ setiap sore (HR. Muslim)'
+                    },
+                    {
+                        nama: 'Surat Al-Falaq & An-Nas (3x)',
+                        arab: 'قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ',
+                        latin: 'Qul a\'uudzu biraббil falaq...',
+                        arti: 'Katakanlah: Aku berlindung kepada Tuhan yang menguasai subuh...',
+                        faedah: 'Mencukupi dari segala sesuatu (HR. Abu Dawud)'
+                    },
+                    {
+                        nama: 'Tasbih Sore (100x)',
+                        arab: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ',
+                        latin: 'Subhaanallaahi wa bihamdih',
+                        arti: 'Maha Suci Allah dan segala puji bagi-Nya',
+                        faedah: 'Dosa-dosanya akan diampuni meskipun sebanyak buih di lautan (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Istighfar Sore (100x)',
+                        arab: 'أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ',
+                        latin: 'Astaghfirullaaha wa atuubu ilaih',
+                        arti: 'Aku memohon ampun kepada Allah dan bertobat kepada-Nya',
+                        faedah: 'Rasulullah ﷺ beristighfar lebih dari 70 kali setiap harinya (HR. Bukhari)'
+                    }
+                ]
+            },
+            harian: {
+                judul: '📿 ZIKIR HARIAN',
+                isi: [
+                    {
+                        nama: 'Subhanallah (33x)',
+                        arab: 'سُبْحَانَ اللَّهِ',
+                        latin: 'Subhaanallaah',
+                        arti: 'Maha Suci Allah',
+                        faedah: 'Diucapkan 33x setelah sholat — menggugurkan dosa meskipun sebanyak buih lautan'
+                    },
+                    {
+                        nama: 'Alhamdulillah (33x)',
+                        arab: 'الْحَمْدُ لِلَّهِ',
+                        latin: 'Alhamdulillaah',
+                        arti: 'Segala puji bagi Allah',
+                        faedah: 'Memenuhi timbangan amal kebaikan (HR. Muslim)'
+                    },
+                    {
+                        nama: 'Allahu Akbar (34x)',
+                        arab: 'اللَّهُ أَكْبَرُ',
+                        latin: 'Allaahu akbar',
+                        arti: 'Allah Maha Besar',
+                        faedah: 'Bersama Subhanallah dan Alhamdulillah, genap 100x setelah sholat'
+                    },
+                    {
+                        nama: 'Laa ilaaha illallah (100x)',
+                        arab: 'لَا إِلَٰهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ',
+                        latin: 'Laa ilaaha illallaahu wahdahu laa syariika lah',
+                        arti: 'Tiada tuhan selain Allah satu-satunya, tiada sekutu bagi-Nya',
+                        faedah: 'Seperti memerdekakan 10 budak, ditulis 100 kebaikan, dihapus 100 keburukan (HR. Bukhari)'
+                    }
+                ]
+            },
+            tidur: {
+                judul: '🌙 DOA SEBELUM TIDUR',
+                isi: [
+                    {
+                        nama: 'Doa Tidur',
+                        arab: 'بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا',
+                        latin: 'Bismikallahumma amuutu wa ahyaa',
+                        arti: 'Dengan nama-Mu ya Allah, aku mati dan aku hidup',
+                        faedah: 'Doa yang diajarkan Rasulullah ﷺ sebelum tidur (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Ayat Kursi (1x)',
+                        arab: 'اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ',
+                        latin: 'Allahu laa ilaaha illaa huwal hayyul qayyuum',
+                        arti: 'Allah, tidak ada tuhan selain Dia Yang Maha Hidup',
+                        faedah: 'Senantiasa dijaga oleh Allah dan tidak didekati setan hingga pagi (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Al-Ikhlas, Al-Falaq, An-Nas (3x)',
+                        arab: 'قُلْ هُوَ اللَّهُ أَحَدٌ',
+                        latin: 'Qul huwallahu ahad...',
+                        arti: 'Katakanlah: Dialah Allah Yang Maha Tunggal...',
+                        faedah: 'Mencukupi dari segala sesuatu (HR. Bukhari)'
+                    },
+                    {
+                        nama: 'Tasbih Fatimah (sebelum tidur)',
+                        arab: 'سُبْحَانَ اللَّهِ × ٣٣، الْحَمْدُ لِلَّهِ × ٣٣، اللَّهُ أَكْبَرُ × ٣٤',
+                        latin: 'Subhaanallaah (33x), Alhamdulillaah (33x), Allaahu akbar (34x)',
+                        arti: 'Maha Suci Allah, Segala Puji Bagi Allah, Allah Maha Besar',
+                        faedah: 'Lebih baik dari pembantu/pelayan di dunia (HR. Bukhari)'
+                    }
+                ]
+            },
+            makan: {
+                judul: '🍽️ DOA MAKAN & MINUM',
+                isi: [
+                    {
+                        nama: 'Doa Sebelum Makan',
+                        arab: 'اللَّهُمَّ بَارِكْ لَنَا فِيمَا رَزَقْتَنَا وَقِنَا عَذَابَ النَّارِ',
+                        latin: 'Allahumma baarik lanaa fiimaa razaqtanaa wa qinaa adzaaban naar',
+                        arti: 'Ya Allah, berkahilah kami dalam rezeki yang Engkau berikan kepada kami, dan jagalah kami dari azab neraka',
+                        faedah: 'Doa yang diajarkan para sahabat'
+                    },
+                    {
+                        nama: 'Doa Sesudah Makan',
+                        arab: 'الْحَمْدُ لِلَّهِ الَّذِي أَطْعَمَنَا وَسَقَانَا وَجَعَلَنَا مُسْلِمِينَ',
+                        latin: 'Alhamdulillahilladzi ath-amanaa wa saqaanaa wa ja\'alanaa muslimiin',
+                        arti: 'Segala puji bagi Allah yang telah memberi kami makan, memberi kami minum, dan menjadikan kami orang-orang muslim',
+                        faedah: 'HR. Abu Dawud & Tirmidzi'
+                    },
+                    {
+                        nama: 'Lupa Baca Bismillah saat Makan',
+                        arab: 'بِسْمِ اللَّهِ أَوَّلَهُ وَآخِرَهُ',
+                        latin: 'Bismillahi awwalahu wa aakhirahu',
+                        arti: 'Dengan nama Allah di awal dan di akhirnya',
+                        faedah: 'Dibaca kalau lupa baca bismillah di awal makan (HR. Abu Dawud)'
+                    }
+                ]
+            }
+        };
+
+        const RANDOM_ZIKIR = [
+            { arab: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ سُبْحَانَ اللَّهِ الْعَظِيم', latin: 'Subhaanallaahi wa bihamdih, Subhaanallaahil azhiim', arti: 'Maha Suci Allah dan segala puji hanya bagi-Nya, Maha Suci Allah yang Maha Agung', faedah: 'Dua kalimat yang ringan di lisan, berat di timbangan, dicintai Allah (HR. Bukhari)' },
+            { arab: 'لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ', latin: 'Laa hawla wa laa quwwata illaa billaah', arti: 'Tiada daya dan kekuatan kecuali dengan pertolongan Allah', faedah: 'Salah satu pintu dari pintu-pintu surga (HR. Tirmidzi)' },
+            { arab: 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ', latin: 'Allahumma shalli \'alaa Muhammad', arti: 'Ya Allah, limpahkanlah shalawat kepada Nabi Muhammad', faedah: 'Barang siapa bershalawat sekali, Allah bershalawat 10x untuknya (HR. Muslim)' },
+            { arab: 'رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ إِنَّكَ أَنْتَ التَّوَّابُ الرَّحِيمُ', latin: 'Rabbighfir lii wa tub \'alayya innaka antat tawwaabur rahiim', arti: 'Ya Tuhanku, ampunilah aku dan terimalah taubatku, sesungguhnya Engkau Maha Penerima Taubat lagi Maha Penyayang', faedah: 'Rasulullah ﷺ membacanya 100x dalam satu majelis (HR. Tirmidzi)' },
+            { arab: 'رَضِيتُ بِاللَّهِ رَبًّا وَبِالإِسْلَامِ دِينًا وَبِمُحَمَّدٍ نَبِيًّا', latin: 'Radhiitu billaahi rabban wa bil islaami diinan wa bi muhammadin nabiyyan', arti: 'Aku ridha Allah sebagai Tuhanku, Islam sebagai agamaku, dan Muhammad sebagai Nabiku', faedah: 'Wajib baginya surga (HR. Abu Dawud)' }
+        ];
+
+        const formatZikir = (data) => {
+            let teks = `*${data.judul}*\n`;
+            teks += `─────────────────────\n\n`;
+            data.isi.forEach((z, i) => {
+                teks += `*${i + 1}. ${z.nama}*\n`;
+                teks += `${z.arab}\n`;
+                teks += `_${z.latin}_\n\n`;
+                teks += `📖 ${z.arti}\n`;
+                teks += `✨ ${z.faedah}\n\n`;
+                teks += `─────────────────────\n`;
+            });
+            return teks;
+        };
+
+        if (!sub || sub === 'help') {
+            msg.reply(
+`📿 *MENU ZIKIR & DOA*
+─────────────────────
+
+🌅 *!zikir pagi* → Zikir pagi lengkap
+🌆 *!zikir sore* → Zikir sore lengkap
+📿 *!zikir harian* → Zikir harian setelah sholat
+🌙 *!zikir tidur* → Doa sebelum tidur
+🍽️ *!zikir makan* → Doa makan & minum
+🎲 *!zikir random* → Satu zikir acak beserta faedahnya
+
+─────────────────────
+_Semoga istiqomah ya 😊_`);
+        } else if (ZIKIR[sub]) {
+            msg.reply(formatZikir(ZIKIR[sub]));
+        } else if (sub === 'random') {
+            const z = RANDOM_ZIKIR[Math.floor(Math.random() * RANDOM_ZIKIR.length)];
+            let teks = `📿 *ZIKIR RANDOM*\n`;
+            teks += `─────────────────────\n\n`;
+            teks += `${z.arab}\n\n`;
+            teks += `_${z.latin}_\n\n`;
+            teks += `📖 ${z.arti}\n\n`;
+            teks += `✨ *Faedah:* ${z.faedah}\n\n`;
+            teks += `─────────────────────\n`;
+            teks += `_Ketik !zikir random lagi untuk zikir lain 😊_`;
+            msg.reply(teks);
+        } else {
+            msg.reply('Pilihan tidak ada 😹\n\nKetik *!zikir* untuk lihat daftar pilihan');
+        }
+    }
     else if (cmd === '!rmbg') {
         const apiKey = process.env.CLIPDROP_API_KEY;
         if (!apiKey) return msg.reply('API key Clipdrop belum diset 😹');
@@ -2054,6 +2271,15 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 
 🎌 *Anime*
 !anime [judul] → Cari anime di Kusonime
+
+📿 *Zikir & Doa*
+!zikir → Menu zikir & doa
+!zikir pagi → Zikir pagi
+!zikir sore → Zikir sore
+!zikir harian → Zikir harian
+!zikir tidur → Doa sebelum tidur
+!zikir makan → Doa makan & minum
+!zikir random → Zikir acak
 
 👨‍💻 *GitHub Tracker*
 !github [username] → Cek profil GitHub
