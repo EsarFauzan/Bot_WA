@@ -1398,6 +1398,75 @@ async function handleCommand(msg) {
     else if (cmd === '!sholat') {
         msg.reply('Cara pakai: *!sholat [nama kota]*\n\nContoh:\n!sholat Palu\n!sholat Jakarta\n!sholat Makassar');
     }
+    // ======== AL QURAN ========
+    else if (cmd.startsWith('!quran')) {
+        const args = msg.body.trim().split(' ').slice(1);
+        if (args.length === 0) {
+            return msg.reply(
+`📖 *MENU AL-QURAN*
+─────────────────────
+*!quran [surah]* → Info detail surah
+*!quran [surah] [ayat]* → Baca ayat spesifik
+
+📌 *Contoh:*
+*!quran 114 1* → Surah An-Nas ayat 1
+*!quran 1 7* → Surah Al-Fatihah ayat 7
+*!quran 36* → Info Surah Yasin
+
+_Catatan: Gunakan nomor surah (1-114)_`
+            );
+        }
+
+        const surahNomor = parseInt(args[0]);
+        let ayatNomor = args.length > 1 ? parseInt(args[1]) : null;
+
+        if (isNaN(surahNomor) || surahNomor < 1 || surahNomor > 114) {
+            return msg.reply('Nomor surah salah 😹. Harap masukkan nomor surah dari 1 sampai 114.');
+        }
+
+        try {
+            const chat = await msg.getChat();
+            chat.sendStateTyping();
+
+            const res = await axios.get(`https://equran.id/api/v2/surat/${surahNomor}`);
+            const dataSurah = res.data?.data;
+
+            if (!dataSurah) {
+                return msg.reply('Gagal mengambil data surah 😹. Coba lagi nanti.');
+            }
+
+            if (ayatNomor) {
+                if (isNaN(ayatNomor) || ayatNomor < 1 || ayatNomor > dataSurah.jumlahAyat) {
+                    return msg.reply(`Nomor ayat salah 😹. Surah *${dataSurah.namaLatin}* hanya memiliki *${dataSurah.jumlahAyat}* ayat.`);
+                }
+                
+                const ayat = dataSurah.ayat[ayatNomor - 1];
+                let teks = `📖 *${dataSurah.namaLatin} (${dataSurah.nama})* - Ayat ${ayat.nomorAyat}\n`;
+                teks += `─────────────────────\n\n`;
+                teks += `${ayat.teksArab}\n\n`;
+                teks += `_${ayat.teksLatin}_\n\n`;
+                teks += `📖 *Terjemahan:*\n${ayat.teksIndonesia}\n\n`;
+                teks += `─────────────────────\n`;
+                teks += `_Jumlah Ayat: ${dataSurah.jumlahAyat} | Turun di: ${dataSurah.tempatTurun}_\n`;
+                
+                msg.reply(teks);
+            } else {
+                let teks = `📖 *${dataSurah.namaLatin} (${dataSurah.nama})*\n`;
+                teks += `─────────────────────\n`;
+                teks += `Arti: ${dataSurah.arti}\n`;
+                teks += `Jumlah Ayat: ${dataSurah.jumlahAyat}\n`;
+                teks += `Tempat Turun: ${dataSurah.tempatTurun}\n\n`;
+                teks += `💡 *Deskripsi:*\n${dataSurah.deskripsi.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').substring(0, 400)}...\n\n`;
+                teks += `_Untuk membaca ayat, gunakan format: !quran ${surahNomor} [nomor_ayat]_\n`;
+                teks += `_Contoh: !quran ${surahNomor} 1_`;
+                
+                msg.reply(teks);
+            }
+        } catch (err) {
+            console.error('Error !quran:', err.message);
+            msg.reply('Aduh gagal mengambil data Al-Quran 😹. Sedang ada masalah dari API pusat.');
+        }
+    }
     // ======== REMINDER OTOMATIS ========
     else if (cmd.startsWith('!reminder on')) {
         if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
@@ -2243,7 +2312,12 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !cuaca [kota] → Cek cuaca kota
 !sholat [kota] → Jadwal sholat hari ini
 
-🔔 *Reminder Otomatis (Grup)*
+� *Al-Quran*
+!quran → Penjelasan menu Quran
+!quran [surah] → Info surah
+!quran [surah] [ayat] → Baca ayat spesifik
+
+�🔔 *Reminder Otomatis (Grup)*
 !reminder on [kota] → Aktifkan reminder sholat
 !reminder off → Nonaktifkan reminder
 !reminder → Cek status reminder
