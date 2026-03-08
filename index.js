@@ -9,12 +9,15 @@ const { execFile } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const axios = require('axios');
 const schedule = require('node-schedule');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: 'https://openrouter.ai/api/v1'
 });
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MODEL_NAME = "arcee-ai/trinity-large-preview:free";
 const VISION_MODEL = "google/gemini-2.0-flash-lite-001";
@@ -856,7 +859,7 @@ function startPrayerReminder() {
 
 // ============== MESSAGE HANDLER ==============
 client.on('message', async msg => {
-    if (!['chat', 'image', 'video', 'document', 'sticker'].includes(msg.type)) return;
+    if (!['chat', 'image', 'video', 'document', 'sticker', 'ptt', 'audio'].includes(msg.type)) return;
 
     const isGroup = msg.from.includes('@g.us');
 
@@ -880,6 +883,7 @@ client.on('message', async msg => {
     const isImage = msg.type === 'image';
     const isVideo = msg.type === 'video';
     const isDocument = msg.type === 'document';
+    const isAudio = msg.type === 'ptt' || msg.type === 'audio';
 
     // Strip mention dari body supaya command bisa dikenali (contoh: "@bot !stiker" → "!stiker")
     const rawBody = (msg.body || '');
@@ -1008,8 +1012,43 @@ client.on('message', async msg => {
 
         let userMessage, modelToUse = MODEL_NAME;
 
+        // Handle Audio / Voice Note
+        if (isAudio && msg.hasMedia) {
+            try {
+                if (!process.env.GEMINI_API_KEY) {
+                    return msg.reply("API Key Gemini belum diatur untuk transkrip suara 😹");
+                }
+                const media = await msg.downloadMedia();
+                if (media && media.data) {
+                    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+                    
+                    const prompt = `Transkrip pesan suara ini ke teks. Jika pengguna menyuruh mengatur alarm/pengingat, output format persis: "!ingatkan [waktu] | [pesan]" (Contoh: !ingatkan 15 menit | angkat jemuran). Jika pengguna minta tambah todo list/tugas, output format persis: "!todo tambah [tugas]" (Contoh: !todo tambah beli beras). Jika bukan perintah keduanya, tulis teks aslinya saja. HANYA hasil teks, tanpa kata pengantar.`;
+
+                    const result = await model.generateContent([
+                        prompt,
+                        { inlineData: { data: media.data, mimeType: media.mimetype } }
+                    ]);
+
+                    let text = result.response.text().trim();
+                    text = text.replace(/^```|```$/g, "").trim();
+
+                    if (text.startsWith('!ingatkan') || text.startsWith('!todo')) {
+                        const originalBody = msg.body;
+                        msg.body = text;
+                        await handleCommand(msg);
+                        msg.body = originalBody;
+                        return; // Selesai diproses sebagai command
+                    } else {
+                        userMessage = text;
+                    }
+                }
+            } catch (e) {
+                console.error("Error transkrip audio:", e.message);
+                return msg.reply("Aduh gagal dengerin suaranya 😹");
+            }
+        }
         // Handle image (analisis AI)
-        if (isImage && msg.hasMedia) {
+        else if (isImage && msg.hasMedia) {
             try {
                 const media = await msg.downloadMedia();
                 if (media && media.data) {
