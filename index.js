@@ -1022,7 +1022,13 @@ client.on('message', async msg => {
                 if (media && media.data) {
                     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
                     
-                    const prompt = `Transkrip pesan suara ini ke teks. Jika pengguna menyuruh mengatur alarm/pengingat, output format persis: "!ingatkan [waktu] | [pesan]" (Contoh: !ingatkan 15 menit | angkat jemuran). Jika pengguna minta tambah todo list/tugas, output format persis: "!todo tambah [tugas]" (Contoh: !todo tambah beli beras). Jika bukan perintah keduanya, tulis teks aslinya saja. HANYA hasil teks, tanpa kata pengantar.`;
+                    const prompt = `Transkrip pesan suara ini ke teks. Ubah ke format perintah bot jika pengguna meminta hal berikut:
+1. Mengatur alarm/pengingat -> "!ingatkan [waktu] | [pesan]" (Contoh: !ingatkan 15 menit | angkat jemuran). 
+2. Menambah todo list -> "!todo tambah [tugas]" (Contoh: !todo tambah beli telur).
+3. Menyelesaikan/mencoret todo -> "!todo coret [nomor]" (Contoh jika user bilang "coret todo nomor satu" -> !todo coret 1).
+4. Menghapus todo -> "!todo hapus [nomor]" (Contoh jika user bilang "hapus todo nomor dua" -> !todo hapus 2).
+5. Melihat todo list -> "!todo" (Contoh jika user bilang "lihat todo list").
+Jika bukan perintah di atas, tulis teks aslinya saja. HANYA hasil teks, tanpa kata pengantar.`;
 
                     const result = await model.generateContent([
                         prompt,
