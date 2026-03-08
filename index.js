@@ -94,6 +94,7 @@ const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
 const NOTES_FILE      = path.join(__dirname, 'notes.json');
 const UJIAN_FILE      = path.join(__dirname, 'ujian.json');
+const TODO_FILE       = path.join(__dirname, 'todos.json');
 let stats = { totalChats: 0, lastActive: null };
 
 // groupId → { kota, kotaId, lokasi }
@@ -104,6 +105,8 @@ const prayerCache = new Map();
 let groupJadwal = new Map();
 // groupId → [ { id, isi, by, ts } ]
 let groupNotes = new Map();
+// userId/groupId → [ { task: string, done: boolean } ]
+let userTodos = new Map();
 // [ { nama, tanggal (YYYY-MM-DD), matkul } ]
 let jadwalUjian = [];
 
@@ -178,6 +181,22 @@ function saveNotes() {
     } catch (e) {}
 }
 
+function loadTodos() {
+    try {
+        if (fs.existsSync(TODO_FILE)) {
+            const data = JSON.parse(fs.readFileSync(TODO_FILE, 'utf8'));
+            userTodos = new Map(Object.entries(data));
+        }
+    } catch (e) {}
+}
+
+function saveTodos() {
+    try {
+        const obj = Object.fromEntries(userTodos);
+        fs.writeFileSync(TODO_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
 function loadUjian() {
     try {
         if (fs.existsSync(UJIAN_FILE)) {
@@ -235,6 +254,7 @@ loadStats();
 loadReminders();
 loadJadwalGroups();
 loadNotes();
+loadTodos();
 loadUjian();
 loadAkademik();
 
@@ -1544,6 +1564,63 @@ _Catatan: Gunakan nomor surah (1-114)_`
         jadwalText += `─────────────────────\n🔔 Reminder 1 jam sebelum kuliah\n!jadwal on → aktifkan di grup\n!jadwal off → nonaktifkan`;
         msg.reply(jadwalText);
     }
+    // ======== TO-DO LIST PRIBADI ========
+    else if (cmd === '!todo' || cmd === '!todo list') {
+        const list = userTodos.get(uid) || [];
+        if (list.length === 0) return msg.reply('📝 To-Do List masih kosong!\n\nTambah tugas dengan:\n*!todo tambah [nama tugas]*\n\nContoh: !todo tambah Beli buku');
+        
+        let teks = `📝 *TO-DO LIST PRIBADI*\n─────────────────────\n\n`;
+        list.forEach((t, i) => {
+            const status = t.done ? '✅' : '⬜';
+            const dicoret = t.done ? '~' : '';
+            teks += `${status} *${i + 1}.* ${dicoret}${t.task}${dicoret}\n`;
+        });
+        teks += `\n─────────────────────\n`;
+        teks += `_Tambah: !todo tambah [tugas]_\n`;
+        teks += `_Selesai: !todo coret [nomor]_\n`;
+        teks += `_Hapus: !todo hapus [nomor]_`;
+        msg.reply(teks);
+    }
+    else if (cmd.startsWith('!todo tambah ')) {
+        const task = msg.body.trim().slice(13).trim();
+        if (!task) return msg.reply('Cara pakai: *!todo tambah [nama tugas]*\nContoh: !todo tambah Beli buku');
+        
+        const list = userTodos.get(uid) || [];
+        list.push({ task: task, done: false });
+        userTodos.set(uid, list);
+        saveTodos();
+        msg.reply(`✅ Tugas ditambahkan ke To-Do List:\n_"${task}"_`);
+    }
+    else if (cmd.startsWith('!todo coret ') || cmd.startsWith('!todo selesai ')) {
+        const no = parseInt(msg.body.trim().split(' ').pop());
+        if (isNaN(no)) return msg.reply('Cara pakai: *!todo coret [nomor]*\nLihat nomor tugas di *!todo*');
+        
+        const list = userTodos.get(uid) || [];
+        if (no < 1 || no > list.length) return msg.reply(`Tugas #${no} tidak ditemukan 😹`);
+        
+        const target = list[no - 1];
+        if (target.done) {
+            return msg.reply(`Tugas *"${target.task}"* sudah diselesaikan sebelumnya ✅`);
+        }
+        
+        target.done = true;
+        userTodos.set(uid, list);
+        saveTodos();
+        msg.reply(`🎉 Mantap! Tugas selesai:\n~_${target.task}_~`);
+    }
+    else if (cmd.startsWith('!todo hapus ')) {
+        const no = parseInt(msg.body.trim().split(' ').pop());
+        if (isNaN(no)) return msg.reply('Cara pakai: *!todo hapus [nomor]*\nLihat nomor tugas di *!todo*');
+        
+        const list = userTodos.get(uid) || [];
+        if (no < 1 || no > list.length) return msg.reply(`Tugas #${no} tidak ditemukan 😹`);
+        
+        const target = list[no - 1];
+        list.splice(no - 1, 1);
+        userTodos.set(uid, list);
+        saveTodos();
+        msg.reply(`🗑️ Tugas dihapus:\n_"${target.task}"_`);
+    }
     // ======== CATATAN / NOTES ========
     else if (cmd.startsWith('!catat ')) {
         const isi = msg.body.trim().slice(7).trim();
@@ -2399,6 +2476,12 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !catat [isi] → Simpan catatan
 !notes → Lihat semua catatan
 !hapus note [no] → Hapus catatan
+
+📋 *To-Do List Pribadi*
+!todo → Lihat daftar tugas
+!todo tambah [tugas] → Tambah tugas
+!todo coret [no] → Tandai selesai
+!todo hapus [no] → Hapus tugas
 
 ⏰ *Pengingat / Alarm*
 !ingatkan [waktu] | [pesan]
