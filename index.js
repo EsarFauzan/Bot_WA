@@ -8,6 +8,7 @@ const sharp = require('sharp');
 const { execFile } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const axios = require('axios');
+const schedule = require('node-schedule');
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
@@ -1646,6 +1647,73 @@ _Catatan: Gunakan nomor surah (1-114)_`
         teks += `_Tambah: !ujian tambah [nama] | [DD-MM-YYYY]_\n_Hapus: !ujian hapus [nomor]_`;
         msg.reply(teks.trim());
     }
+    // ======== ALARM / REMINDER PRIBADI ========
+    else if (cmd.startsWith('!ingatkan ')) {
+        const input = msg.body.trim().slice(10).trim(); // Menghilangkan "!ingatkan "
+        if (!input.includes('|')) {
+            return msg.reply(
+`Gunakan format yang benar:\n*!ingatkan [waktu] | [pesan]*\n\nContoh:\n*!ingatkan 15 menit | Buka puasa*\n*!ingatkan 2 jam | Minum obat*\n*!ingatkan besok 08:00 | Meeting dengan tim IT*`
+            );
+        }
+
+        const parts = input.split('|');
+        const waktuStr = parts[0].trim().toLowerCase();
+        const pesanIsi = parts[1].trim();
+        
+        let targetTime = new Date();
+        
+        try {
+            // Parsing untuk "X menit"
+            if (waktuStr.includes('menit')) {
+                const menit = parseInt(waktuStr.replace(/[^0-9]/g, ''));
+                if(isNaN(menit)) throw new Error('Waktu tidak valid');
+                targetTime.setMinutes(targetTime.getMinutes() + menit);
+            } 
+            // Parsing untuk "X detik" (untuk ngetes)
+            else if (waktuStr.includes('detik')) {
+                const detik = parseInt(waktuStr.replace(/[^0-9]/g, ''));
+                if(isNaN(detik)) throw new Error('Waktu tidak valid');
+                targetTime.setSeconds(targetTime.getSeconds() + detik);
+            }
+            // Parsing untuk "X jam"
+            else if (waktuStr.includes('jam') && !waktuStr.includes('besok')) {
+                const jam = parseInt(waktuStr.replace(/[^0-9]/g, ''));
+                if(isNaN(jam)) throw new Error('Waktu tidak valid');
+                targetTime.setHours(targetTime.getHours() + jam);
+            }
+            // Parsing untuk "besok HH:MM"
+            else if (waktuStr.includes('besok')) {
+                const clockPattern = waktuStr.match(/(\d{1,2})[.:](\d{2})/);
+                if(clockPattern) {
+                    targetTime.setDate(targetTime.getDate() + 1);
+                    targetTime.setHours(parseInt(clockPattern[1]), parseInt(clockPattern[2]), 0);
+                } else {
+                    targetTime.setDate(targetTime.getDate() + 1);
+                }
+            } 
+            // Fallback fail
+            else {
+                return msg.reply('Format waktu belum didukung.\nGunakan kata *"menit"*, *"jam"*, atau *"besok 08:00"*');
+            }
+            
+            const formatter = new Intl.DateTimeFormat('id-ID', {
+                dateStyle: 'full',
+                timeStyle: 'medium'
+            });
+
+            // Set up job scheduler
+            schedule.scheduleJob(targetTime, async function() {
+                try {
+                    await client.sendMessage(msg.from, `⏰ *PENGINGAT / ALARM* ⏰\n\nHalo!\nKamu memintaku untuk mengingatkan pesan ini:\n\n💬 _"${pesanIsi}"_`);
+                } catch(e) {}
+            });
+
+            msg.reply(`✅ *Alarm disetel!*\n\nBot akan mengingatkanmu:\n_"${pesanIsi}"_\n\nPada: *${formatter.format(targetTime)}*`);
+            
+        } catch (e) {
+            msg.reply('Gagal mengatur alarm, pastikan format waktunya ada angkanya ya. 😹');
+        }
+    }
     else if (cmd.startsWith('!ujian tambah ')) {
         const raw = msg.body.trim().slice(14).trim();
         const parts = raw.split('|');
@@ -2331,6 +2399,9 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !catat [isi] → Simpan catatan
 !notes → Lihat semua catatan
 !hapus note [no] → Hapus catatan
+
+⏰ *Pengingat / Alarm*
+!ingatkan [waktu] | [pesan]
 
 🎓 *Info Akademik*
 !akademik → Lihat semua link
