@@ -1025,8 +1025,8 @@ client.on('message', async msg => {
                     const prompt = `Transkrip pesan suara ini ke teks. Ubah ke format perintah bot jika pengguna meminta hal berikut:
 1. Mengatur alarm/pengingat -> "!ingatkan [waktu] | [pesan]" (Contoh: !ingatkan 15 menit | angkat jemuran). 
 2. Menambah todo list -> "!todo tambah [tugas]" (Contoh: !todo tambah beli telur).
-3. Menyelesaikan/mencoret todo -> "!todo coret [nomor]" (Contoh jika user bilang "coret todo nomor satu" -> !todo coret 1).
-4. Menghapus todo -> "!todo hapus [nomor]" (Contoh jika user bilang "hapus todo nomor dua" -> !todo hapus 2).
+3. Menyelesaikan/mencoret todo -> "!todo coret [nomor]" (Contoh jika user bilang "coret todo nomor satu dan dua" -> !todo coret 1, 2).
+4. Menghapus todo -> "!todo hapus [nomor]" (Contoh jika user bilang "hapus todo nomor satu dan dua" -> !todo hapus 1, 2).
 5. Melihat todo list -> "!todo" (Contoh jika user bilang "lihat todo list").
 Jika bukan perintah di atas, tulis teks aslinya saja. HANYA hasil teks, tanpa kata pengantar.`;
 
@@ -1637,34 +1637,74 @@ _Catatan: Gunakan nomor surah (1-114)_`
         msg.reply(`✅ Tugas ditambahkan ke To-Do List:\n_"${task}"_`);
     }
     else if (cmd.startsWith('!todo coret ') || cmd.startsWith('!todo selesai ')) {
-        const no = parseInt(msg.body.trim().split(' ').pop());
-        if (isNaN(no)) return msg.reply('Cara pakai: *!todo coret [nomor]*\nLihat nomor tugas di *!todo*');
+        const arg = msg.body.trim().replace(/^!todo (coret|selesai) /i, '').trim();
+        if (!arg) return msg.reply('Cara pakai: *!todo coret [nomor]*\nPisahkan dengan koma atau spasi untuk banyak nomor.');
         
         const list = userTodos.get(uid) || [];
-        if (no < 1 || no > list.length) return msg.reply(`Tugas #${no} tidak ditemukan 😹`);
-        
-        const target = list[no - 1];
-        if (target.done) {
-            return msg.reply(`Tugas *"${target.task}"* sudah diselesaikan sebelumnya ✅`);
-        }
-        
-        target.done = true;
+        const nosMatch = arg.match(/\d+/g);
+        if (!nosMatch || nosMatch.length === 0) return msg.reply('Masukkan minimal satu nomor tugas.');
+
+        let doneTasks = [];
+        let notFound = [];
+        let alreadyDone = [];
+        const nos = [...new Set(nosMatch.map(Number))]; // unik
+
+        nos.forEach(no => {
+            if (no < 1 || no > list.length) {
+                notFound.push(no);
+            } else {
+                const target = list[no - 1];
+                if (target.done) {
+                    alreadyDone.push(no);
+                } else {
+                    target.done = true;
+                    doneTasks.push(target.task);
+                }
+            }
+        });
+
         userTodos.set(uid, list);
         saveTodos();
-        msg.reply(`🎉 Mantap! Tugas selesai:\n~_${target.task}_~`);
+
+        let reply = '';
+        if (doneTasks.length > 0) reply += `🎉 Mantap! Tugas selesai:\n` + doneTasks.map(t => `~_${t}_~`).join('\n') + `\n\n`;
+        if (alreadyDone.length > 0) reply += `✅ Tugas ini sudah diselesaikan sebelumnya: ${alreadyDone.join(', ')}\n`;
+        if (notFound.length > 0) reply += `😹 Tugas ini tidak ditemukan: ${notFound.join(', ')}`;
+        
+        msg.reply(reply.trim());
     }
     else if (cmd.startsWith('!todo hapus ')) {
-        const no = parseInt(msg.body.trim().split(' ').pop());
-        if (isNaN(no)) return msg.reply('Cara pakai: *!todo hapus [nomor]*\nLihat nomor tugas di *!todo*');
+        const arg = msg.body.trim().replace(/^!todo hapus /i, '').trim();
+        if (!arg) return msg.reply('Cara pakai: *!todo hapus [nomor]*\nPisahkan dengan koma atau spasi untuk banyak nomor.');
         
         const list = userTodos.get(uid) || [];
-        if (no < 1 || no > list.length) return msg.reply(`Tugas #${no} tidak ditemukan 😹`);
-        
-        const target = list[no - 1];
-        list.splice(no - 1, 1);
+        const nosMatch = arg.match(/\d+/g);
+        if (!nosMatch || nosMatch.length === 0) return msg.reply('Masukkan minimal satu nomor tugas.');
+
+        const nos = [...new Set(nosMatch.map(Number))];
+        let deletedTasks = [];
+        let notFound = [];
+
+        nos.forEach(no => {
+            if (no < 1 || no > list.length) notFound.push(no);
+        });
+
+        const validNos = nos.filter(no => no >= 1 && no <= list.length).sort((a, b) => b - a);
+        validNos.forEach(no => {
+            const target = list[no - 1];
+            deletedTasks.push(target.task); // Catat yang dihapus (akan terbalik arraynya karena descending, tapi tak apa)
+            list.splice(no - 1, 1);
+        });
+        deletedTasks.reverse(); // Kembalikan ke urutan awal
+
         userTodos.set(uid, list);
         saveTodos();
-        msg.reply(`🗑️ Tugas dihapus:\n_"${target.task}"_`);
+
+        let reply = '';
+        if (deletedTasks.length > 0) reply += `🗑️ Tugas dihapus:\n` + deletedTasks.map(t => `_"${t}"_`).join('\n') + `\n\n`;
+        if (notFound.length > 0) reply += `😹 Tugas ini tidak ditemukan: ${notFound.join(', ')}`;
+        
+        msg.reply(reply.trim());
     }
     // ======== CATATAN / NOTES ========
     else if (cmd.startsWith('!catat ')) {
@@ -2525,8 +2565,8 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 📋 *To-Do List Pribadi*
 !todo → Lihat daftar tugas
 !todo tambah [tugas] → Tambah tugas
-!todo coret [no] → Tandai selesai
-!todo hapus [no] → Hapus tugas
+!todo coret [no,no] → Tandai selesai banyak sekaligus
+!todo hapus [no,no] → Hapus tugas banyak sekaligus
 
 ⏰ *Pengingat / Alarm*
 !ingatkan [waktu] | [pesan]
