@@ -56,7 +56,7 @@ Kalau mau update bot cukup jalankan:
 
 Tinggal buka PowerShell lagi di PC kamu dan ketik:
 
-ssh root@152.42.181.24
+ssh root@152.42.181.24 -p 2222
 
 
 

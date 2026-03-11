@@ -934,50 +934,7 @@ client.on('message', async msg => {
             return;
         }
 
-        // Kalau tidak → optimize & kirim sebagai video story
-        if (!mime.startsWith('video/') && !/\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename)) {
-            return; // GIF tanpa caption stiker → abaikan
-        }
-
-        try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
-
-            // Cek ukuran file — skip jika > 50MB
-            const fileSize = msg._data?.size || msg._data?.fileSizeBytes || 0;
-            if (fileSize > 50 * 1024 * 1024) {
-                return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
-            }
-
-            await msg.reply('Bentar sy optimize videonya dulu 🤭 sabar yaa...');
-
-            const media = await msg.downloadMedia();
-            if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
-
-            const os = require('os');
-            const ts = Date.now();
-            const tmpIn = path.join(os.tmpdir(), `stiker_vi_${ts}.mp4`);
-            const tmpOut = path.join(os.tmpdir(), `stiker_vo_${ts}.mp4`);
-            fs.writeFileSync(tmpIn, Buffer.from(media.data, 'base64'));
-
-            try {
-                await optimizeVideo(tmpIn, tmpOut);
-
-                const outputBuffer = fs.readFileSync(tmpOut);
-                const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
-
-                await msg.reply('Nih videonya 🤭 tinggal download trus upload ke story!');
-                await client.sendMessage(userId, optimizedMedia, {
-                    sendMediaAsDocument: false
-                });
-            } finally {
-                if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
-                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-            }
-        } catch (err) {
-            console.error('Error optimize video:', err.message);
-            msg.reply('Aduh error sy proses videonya 😹 coba lagi yaa');
-        }
+        // Kalau bukan request stiker, abaikan saja karena tidak ada command eksplisit
         return;
     }
 
@@ -1189,25 +1146,32 @@ async function handleCommand(msg) {
         }
     }
     else if (cmd === '!storyin') {
-        if (!msg.hasQuotedMsg) {
-            return msg.reply('Cara pakai: Reply ke video dokumen yang mau dijadiin story, trus ketik *!storyin* 🤭');
-        }
-        try {
+        let targetMsg = null;
+        
+        if (msg.hasMedia) {
+            targetMsg = msg;
+        } else if (msg.hasQuotedMsg) {
             const quoted = await msg.getQuotedMessage();
-            if (!quoted.hasMedia) {
-                return msg.reply('Itu bukan video 😹 Reply ke video dokumennya yaa');
-            }
-            const tipe = quoted.type;
-            const mime = quoted._data?.mimetype || '';
-            const filename = quoted._data?.filename || '';
+            if (quoted.hasMedia) targetMsg = quoted;
+        }
+
+        if (!targetMsg) {
+            return msg.reply('Cara pakai: Reply ke video dokumen yang mau dijadiin story, atau kirim langsung video/dokumen dgn caption *!storyin* 🤭');
+        }
+
+        try {
+            const tipe = targetMsg.type;
+            const mime = targetMsg._data?.mimetype || '';
+            const filename = targetMsg._data?.filename || '';
             const isVideoDoc = tipe === 'video' || tipe === 'document' ||
                 mime.startsWith('video/') || /\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename);
+            
             if (!isVideoDoc) {
                 return msg.reply('Nda bisa yaa, harus video atau dokumen video 😹');
             }
 
             // Cek ukuran file — skip jika > 50MB
-            const fileSize = quoted._data?.size || quoted._data?.fileSizeBytes || 0;
+            const fileSize = targetMsg._data?.size || targetMsg._data?.fileSizeBytes || 0;
             if (fileSize > 50 * 1024 * 1024) {
                 return msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
             }
@@ -1216,7 +1180,7 @@ async function handleCommand(msg) {
             chat.sendStateTyping();
             await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
-            const media = await quoted.downloadMedia();
+            const media = await targetMsg.downloadMedia();
             if (!media) return msg.reply('Gagal download videonya 😹 coba lagi yaa');
 
             const os = require('os');
