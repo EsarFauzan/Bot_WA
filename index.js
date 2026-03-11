@@ -966,9 +966,9 @@ client.on('message', async msg => {
                 const outputBuffer = fs.readFileSync(tmpOut);
                 const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
 
+                await msg.reply('Nih videonya 🤭 tinggal download trus upload ke story!');
                 await client.sendMessage(userId, optimizedMedia, {
-                    sendMediaAsDocument: false,
-                    caption: 'Nih videonya 🤭 tinggal download trus upload ke story!'
+                    sendMediaAsDocument: false
                 });
             } finally {
                 if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -1229,9 +1229,10 @@ async function handleCommand(msg) {
                 await optimizeVideo(tmpIn, tmpOut);
                 const outputBuffer = fs.readFileSync(tmpOut);
                 const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
+                
+                await msg.reply('Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!');
                 await client.sendMessage(uid, optimizedMedia, {
-                    sendMediaAsDocument: false,
-                    caption: 'Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!'
+                    sendMediaAsDocument: false
                 });
             } finally {
                 if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
@@ -1307,9 +1308,9 @@ async function handleCommand(msg) {
                 await optimizeVideo(tmpIn, tmpOut);
                 const outputBuffer = fs.readFileSync(tmpOut);
                 const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'tiktok.mp4');
+                await msg.reply('Nih videonya 🤭 kualitas HD!');
                 await client.sendMessage(uid, videoMedia, {
-                    sendMediaAsDocument: false,
-                    caption: 'Nih videonya 🤭 kualitas HD!'
+                    sendMediaAsDocument: false
                 });
             } finally {
                 if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
@@ -1365,9 +1366,10 @@ async function handleCommand(msg) {
                     await optimizeVideo(tmpIn, tmpOut);
                     const outputBuffer = fs.readFileSync(tmpOut);
                     const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'youtube.mp4');
+                    
+                    await msg.reply('Nih videonya 🤭 kualitas HD!');
                     await client.sendMessage(uid, videoMedia, {
-                        sendMediaAsDocument: false,
-                        caption: 'Nih videonya 🤭 kualitas HD!'
+                        sendMediaAsDocument: false
                     });
                 } finally {
                     if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
