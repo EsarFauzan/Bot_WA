@@ -2312,9 +2312,8 @@ _Semoga istiqomah ya 😊_`);
             const resultBuffer = await upscaleImage(pngBuffer);
 
             const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
-            await client.sendMessage(uid, resultMedia, {
-                caption: 'Nih fotonya ee 🔍 kualitas udah ditingkatkan, rasio tetap sama!'
-            });
+            await msg.reply('Nih fotonya ee 🔍 kualitas udah ditingkatkan, rasio tetap sama!');
+            await client.sendMessage(uid, resultMedia);
 
         } catch (err) {
             const status = err.response?.status;
