@@ -52,6 +52,8 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !jadwal tambah [hari] | [mulai] | [selesai] | [matkul]
 !jadwal ubah [no] | [hari] | [mulai] | [selesai] | [matkul]
 !jadwal hapus [no]
+Auto: Fakta IT terkini -2 menit sebelum reminder
+Auto: Quotes IT +2 menit setelah reminder
 
 📝 *Catatan Grup*
 !catat [isi] → Simpan catatan

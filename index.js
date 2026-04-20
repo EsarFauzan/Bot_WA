@@ -119,6 +119,7 @@ const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
 const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
 const SHOLAT_MODE_FILE = path.join(__dirname, 'sholat_modes.json');
+const JADWAL_INSIGHT_STATE_FILE = path.join(__dirname, 'jadwal_insight_state.json');
 const ZIKIR_AUTO_FILE = path.join(__dirname, 'zikir_auto_targets.json');
 const ZIKIR_STATE_FILE = path.join(__dirname, 'zikir_auto_state.json');
 const NOTES_FILE      = path.join(__dirname, 'notes.json');
@@ -143,6 +144,10 @@ let groupNotes = new Map();
 let userTodos = new Map();
 // [ { nama, tanggal (YYYY-MM-DD), matkul } ]
 let jadwalUjian = [];
+let jadwalInsightState = {
+    tglKey: '',
+    sentKeys: []
+};
 let zikirAutoState = {
     tglKey: '',
     sentKeys: []
@@ -216,6 +221,27 @@ function saveSholatModes() {
     try {
         const obj = Object.fromEntries(sholatModes);
         fs.writeFileSync(SHOLAT_MODE_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
+function loadJadwalInsightState() {
+    try {
+        if (!fs.existsSync(JADWAL_INSIGHT_STATE_FILE)) return;
+        const data = JSON.parse(fs.readFileSync(JADWAL_INSIGHT_STATE_FILE, 'utf8'));
+        if (!data || typeof data !== 'object') return;
+        if (typeof data.tglKey !== 'string') return;
+        if (!Array.isArray(data.sentKeys)) return;
+
+        jadwalInsightState = {
+            tglKey: data.tglKey,
+            sentKeys: data.sentKeys
+        };
+    } catch (e) {}
+}
+
+function saveJadwalInsightState() {
+    try {
+        fs.writeFileSync(JADWAL_INSIGHT_STATE_FILE, JSON.stringify(jadwalInsightState, null, 2));
     } catch (e) {}
 }
 
@@ -388,6 +414,102 @@ function saveKuliahSchedule() {
     } catch (e) {}
 }
 
+function ensureJadwalInsightStateForDate(tglKey) {
+    if (jadwalInsightState.tglKey === tglKey && Array.isArray(jadwalInsightState.sentKeys)) {
+        return;
+    }
+
+    jadwalInsightState = {
+        tglKey,
+        sentKeys: []
+    };
+    saveJadwalInsightState();
+}
+
+const FALLBACK_IT_QUOTES = [
+    '"Code is like humor. When you have to explain it, it\'s bad." — Cory House',
+    '"Programs must be written for people to read." — Harold Abelson',
+    '"Simplicity is the soul of efficiency." — Austin Freeman',
+    '"First, solve the problem. Then, write the code." — John Johnson'
+];
+
+const FALLBACK_IT_FACTS = [
+    'Git dipakai di jutaan repo dan jadi fondasi kolaborasi software modern.',
+    'Sebagian besar insiden keamanan berawal dari salah konfigurasi, bukan nol-day exploit.',
+    'Observability (logs, metrics, traces) sering jadi pembeda utama antara cepat pulih dan downtime panjang.'
+];
+
+function pickRandom(items) {
+    if (!Array.isArray(items) || items.length === 0) return '';
+    return items[Math.floor(Math.random() * items.length)];
+}
+
+async function buildITQuoteMessage() {
+    const fallbackQuote = pickRandom(FALLBACK_IT_QUOTES);
+
+    try {
+        const res = await openai.chat.completions.create({
+            model: MODEL_NAME,
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Kamu membuat 1 quotes inspiratif seputar IT untuk WhatsApp dalam bahasa Indonesia. Ringkas, kuat, dan tidak alay.'
+                },
+                {
+                    role: 'user',
+                    content: 'Buat 1 quotes IT terbaru gaya profesional. Format wajib: "..." — Nama. Maksimal 22 kata.'
+                }
+            ],
+            temperature: 0.9,
+            max_tokens: 80
+        });
+
+        const quote = (res.choices?.[0]?.message?.content || '').trim();
+        if (quote) {
+            return `✨ *QUOTES IT HARI INI*\n${quote}`;
+        }
+    } catch (err) {
+        console.error('Error generate IT quote:', err.message);
+    }
+
+    return `✨ *QUOTES IT HARI INI*\n${fallbackQuote}`;
+}
+
+async function buildLatestITFactMessage() {
+    try {
+        const topRes = await axios.get('https://hacker-news.firebaseio.com/v0/topstories.json', { timeout: 12000 });
+        const ids = Array.isArray(topRes.data) ? topRes.data.slice(0, 20) : [];
+        if (ids.length === 0) throw new Error('No top stories');
+
+        const storyResults = await Promise.all(ids.map(async (id) => {
+            try {
+                const itemRes = await axios.get(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { timeout: 12000 });
+                return itemRes.data;
+            } catch (e) {
+                return null;
+            }
+        }));
+
+        const stories = storyResults
+            .filter((item) => item && item.type === 'story' && item.title)
+            .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+        if (stories.length === 0) throw new Error('No story details');
+
+        const candidates = stories.slice(0, Math.min(7, stories.length));
+        const chosen = pickRandom(candidates);
+        const link = chosen.url || `https://news.ycombinator.com/item?id=${chosen.id}`;
+        const waktu = chosen.time
+            ? new Date(chosen.time * 1000).toLocaleString('id-ID', { timeZone: BOT_TIMEZONE, hour12: false })
+            : '-';
+
+        return `💡 *FAKTA IT TERKINI*\n📰 ${chosen.title}\n⭐ Skor komunitas: ${chosen.score || 0} | 💬 Komentar: ${chosen.descendants || 0}\n🕒 Update: ${waktu}\n🔗 ${link}\n\n_Penting karena ini topik yang sedang hangat dibahas komunitas teknologi global._`;
+    } catch (err) {
+        console.error('Error fetch IT fact:', err.message);
+        return `💡 *FAKTA IT TERKINI*\n${pickRandom(FALLBACK_IT_FACTS)}\n\n_Poin ini penting dan sering jadi faktor penentu kualitas sistem IT._`;
+    }
+}
+
 function ensureZikirStateForDate(tglKey) {
     if (zikirAutoState.tglKey === tglKey && Array.isArray(zikirAutoState.sentKeys)) {
         return;
@@ -444,6 +566,7 @@ loadStats();
 loadReminders();
 loadJadwalGroups();
 loadSholatModes();
+loadJadwalInsightState();
 loadZikirAutoTargets();
 loadZikirAutoState();
 loadKuliahSchedule();
@@ -965,12 +1088,44 @@ function startJadwalReminder() {
     setInterval(async () => {
         if (groupJadwal.size === 0) return;
 
-        const { hariIdx: hari, jamMenit } = getTimeContextInZone();
+        const { hariIdx: hari, jamMenit, tglKey } = getTimeContextInZone();
+        ensureJadwalInsightStateForDate(tglKey);
+        let stateChanged = false;
 
         for (const jadwal of JADWAL_KULIAH) {
-            if (jadwal.hari !== hari || jadwal.reminder !== jamMenit) continue;
+            if (jadwal.hari !== hari) continue;
 
-            const pesan = `📚 *REMINDER KULIAH* - 1 jam lagi!
+            const reminderTime = jadwal.reminder;
+            const factTime = addMinutesToTime(reminderTime, -2);
+            const quoteTime = addMinutesToTime(reminderTime, 2);
+            if (![factTime, reminderTime, quoteTime].includes(jamMenit)) continue;
+
+            const eventBase = `${jadwal.hari}:${jadwal.reminder}:${jadwal.mulai}:${jadwal.matkul}`;
+            const groupIds = Array.from(groupJadwal.keys());
+
+            if (jamMenit === factTime) {
+                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`fact:${groupId}:${eventBase}`));
+                if (targetGroups.length > 0) {
+                    const factText = await buildLatestITFactMessage();
+                    const message = `🧠 *FAKTA IT - 2 MENIT SEBELUM REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${factText}`;
+
+                    for (const groupId of targetGroups) {
+                        try {
+                            await client.sendMessage(groupId, message);
+                            jadwalInsightState.sentKeys.push(`fact:${groupId}:${eventBase}`);
+                            stateChanged = true;
+                            console.log(`💡 Fakta IT terkirim ke ${groupId}: ${jadwal.matkul}`);
+                        } catch (err) {
+                            console.error(`Error kirim fakta IT ke ${groupId}:`, err.message);
+                        }
+                    }
+                }
+            }
+
+            if (jamMenit === reminderTime) {
+                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`reminder:${groupId}:${eventBase}`));
+                if (targetGroups.length > 0) {
+                    const pesan = `📚 *REMINDER KULIAH* - 1 jam lagi!
 ─────────────────────
 📖 Mata Kuliah : *${jadwal.matkul}*
 🕑 Mulai       : *${jadwal.mulai} WITA*
@@ -979,14 +1134,41 @@ function startJadwalReminder() {
 ─────────────────────
 _Jangan telat masuk kelas nya! 🙏_`;
 
-            for (const [groupId] of groupJadwal.entries()) {
-                try {
-                    await client.sendMessage(groupId, pesan);
-                    console.log(`📚 Reminder kuliah terkirim ke ${groupId}: ${jadwal.matkul}`);
-                } catch (err) {
-                    console.error(`Error kirim reminder kuliah ke ${groupId}:`, err.message);
+                    for (const groupId of targetGroups) {
+                        try {
+                            await client.sendMessage(groupId, pesan);
+                            jadwalInsightState.sentKeys.push(`reminder:${groupId}:${eventBase}`);
+                            stateChanged = true;
+                            console.log(`📚 Reminder kuliah terkirim ke ${groupId}: ${jadwal.matkul}`);
+                        } catch (err) {
+                            console.error(`Error kirim reminder kuliah ke ${groupId}:`, err.message);
+                        }
+                    }
                 }
             }
+
+            if (jamMenit === quoteTime) {
+                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`quote:${groupId}:${eventBase}`));
+                if (targetGroups.length > 0) {
+                    const quoteText = await buildITQuoteMessage();
+                    const message = `✨ *QUOTES IT - 2 MENIT SETELAH REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${quoteText}`;
+
+                    for (const groupId of targetGroups) {
+                        try {
+                            await client.sendMessage(groupId, message);
+                            jadwalInsightState.sentKeys.push(`quote:${groupId}:${eventBase}`);
+                            stateChanged = true;
+                            console.log(`✨ Quotes IT terkirim ke ${groupId}: ${jadwal.matkul}`);
+                        } catch (err) {
+                            console.error(`Error kirim quotes IT ke ${groupId}:`, err.message);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (stateChanged) {
+            saveJadwalInsightState();
         }
     }, 60 * 1000);
 }
