@@ -1,7 +1,5 @@
-async function handleReminderJadwalCommands(ctx) {
+function createReminderJadwalCommandsHandler(deps) {
     const {
-        cmd,
-        msg,
         axios,
         groupReminders,
         saveReminders,
@@ -10,7 +8,10 @@ async function handleReminderJadwalCommands(ctx) {
         getTimeContextInZone,
         NAMA_HARI,
         JADWAL_KULIAH
-    } = ctx;
+    } = deps;
+
+    return async function handleReminderJadwalCommands(ctx) {
+        const { cmd, msg } = ctx;
 
     if (cmd.startsWith('!reminder on')) {
         if (!msg.from.includes('@g.us')) {
@@ -128,9 +129,10 @@ async function handleReminderJadwalCommands(ctx) {
         return true;
     }
 
-    return false;
+        return false;
+    };
 }
 
 module.exports = {
-    handleReminderJadwalCommands
+    createReminderJadwalCommandsHandler
 };

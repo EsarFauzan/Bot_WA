@@ -1,8 +1,5 @@
-async function handleMediaCommands(ctx) {
+function createMediaCommandsHandler(deps) {
     const {
-        cmd,
-        msg,
-        uid,
         client,
         path,
         fs,
@@ -17,7 +14,10 @@ async function handleMediaCommands(ctx) {
         downloadYouTubeVideo,
         removeBackground,
         upscaleImage
-    } = ctx;
+    } = deps;
+
+    return async function handleMediaCommands(ctx) {
+        const { cmd, msg, uid } = ctx;
 
     if (cmd === '!stiker') {
         if (msg.hasMedia) {
@@ -594,9 +594,10 @@ async function handleMediaCommands(ctx) {
         return true;
     }
 
-    return false;
+        return false;
+    };
 }
 
 module.exports = {
-    handleMediaCommands
+    createMediaCommandsHandler
 };

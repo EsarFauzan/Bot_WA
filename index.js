@@ -13,11 +13,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { getTimeContextInZone } = require('./src/utils/timeContext');
 const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
-const { handleBasicCommands } = require('./src/commands/basicCommands');
-const { handleReminderJadwalCommands } = require('./src/commands/reminderJadwalCommands');
-const { handleMediaCommands } = require('./src/commands/mediaCommands');
-const { handleUtilityCommands } = require('./src/commands/utilityCommands');
-const { handleProductivityCommands } = require('./src/commands/productivityCommands');
+const { createCommandRouter } = require('./src/commands/createCommandRouter');
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
@@ -1102,83 +1098,40 @@ Jika bukan perintah di atas, tulis teks aslinya saja. HANYA hasil teks, tanpa ka
 });
 
 // ============== COMMANDS ==============
-async function handleCommand(msg) {
-    const uid = msg.from;
-    const cmd = msg.body.toLowerCase().trim();
-
-    if (await handleBasicCommands({
-        cmd,
-        msg,
-        uid,
-        userModes,
-        stats,
-        history,
-        buildHelpMenu
-    })) {
-        return;
-    }
-
-    if (await handleReminderJadwalCommands({
-        cmd,
-        msg,
-        axios,
-        groupReminders,
-        saveReminders,
-        groupJadwal,
-        saveJadwalGroups,
-        getTimeContextInZone,
-        NAMA_HARI,
-        JADWAL_KULIAH
-    })) {
-        return;
-    }
-
-    if (await handleMediaCommands({
-        cmd,
-        msg,
-        uid,
-        client,
-        path,
-        fs,
-        sharp,
-        axios,
-        MessageMedia,
-        buatStiker,
-        kirimStiker,
-        optimizeVideo,
-        downloadIGVideo,
-        downloadTikTokVideo,
-        downloadYouTubeVideo,
-        removeBackground,
-        upscaleImage
-    })) {
-        return;
-    }
-
-    if (await handleUtilityCommands({
-        cmd,
-        msg,
-        axios
-    })) {
-        return;
-    }
-
-    if (await handleProductivityCommands({
-        cmd,
-        msg,
-        uid,
-        userTodos,
-        saveTodos,
-        groupNotes,
-        saveNotes,
-        LINK_AKADEMIK,
-        saveAkademik,
-        jadwalUjian,
-        saveUjian,
-        schedule,
-        client
-    })) {
-        return;
-    }
-}
+const handleCommand = createCommandRouter({
+    client,
+    axios,
+    path,
+    fs,
+    sharp,
+    MessageMedia,
+    schedule,
+    userModes,
+    stats,
+    history,
+    buildHelpMenu,
+    groupReminders,
+    saveReminders,
+    groupJadwal,
+    saveJadwalGroups,
+    getTimeContextInZone,
+    NAMA_HARI,
+    JADWAL_KULIAH,
+    userTodos,
+    saveTodos,
+    groupNotes,
+    saveNotes,
+    LINK_AKADEMIK,
+    saveAkademik,
+    jadwalUjian,
+    saveUjian,
+    buatStiker,
+    kirimStiker,
+    optimizeVideo,
+    downloadIGVideo,
+    downloadTikTokVideo,
+    downloadYouTubeVideo,
+    removeBackground,
+    upscaleImage
+});
 client.initialize();

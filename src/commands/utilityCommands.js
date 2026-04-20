@@ -181,8 +181,11 @@ function formatZikir(data) {
     return teks;
 }
 
-async function handleUtilityCommands(ctx) {
-    const { cmd, msg, axios } = ctx;
+function createUtilityCommandsHandler(deps) {
+    const { axios } = deps;
+
+    return async function handleUtilityCommands(ctx) {
+        const { cmd, msg } = ctx;
 
     if (cmd.startsWith('!cuaca ')) {
         const kota = msg.body.trim().split(' ').slice(1).join(' ').trim();
@@ -486,9 +489,10 @@ async function handleUtilityCommands(ctx) {
         return true;
     }
 
-    return false;
+        return false;
+    };
 }
 
 module.exports = {
-    handleUtilityCommands
+    createUtilityCommandsHandler
 };

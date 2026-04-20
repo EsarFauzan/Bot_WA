@@ -1,8 +1,5 @@
-async function handleProductivityCommands(ctx) {
+function createProductivityCommandsHandler(deps) {
     const {
-        cmd,
-        msg,
-        uid,
         userTodos,
         saveTodos,
         groupNotes,
@@ -13,7 +10,10 @@ async function handleProductivityCommands(ctx) {
         saveUjian,
         schedule,
         client
-    } = ctx;
+    } = deps;
+
+    return async function handleProductivityCommands(ctx) {
+        const { cmd, msg, uid } = ctx;
 
     if (cmd === '!todo' || cmd === '!todo list') {
         const list = userTodos.get(uid) || [];
@@ -381,9 +381,10 @@ async function handleProductivityCommands(ctx) {
         return true;
     }
 
-    return false;
+        return false;
+    };
 }
 
 module.exports = {
-    handleProductivityCommands
+    createProductivityCommandsHandler
 };

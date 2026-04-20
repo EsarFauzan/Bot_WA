@@ -1,13 +1,8 @@
-async function handleBasicCommands(ctx) {
-    const {
-        cmd,
-        msg,
-        uid,
-        userModes,
-        stats,
-        history,
-        buildHelpMenu
-    } = ctx;
+function createBasicCommandsHandler(deps) {
+    const { userModes, stats, history, buildHelpMenu } = deps;
+
+    return async function handleBasicCommands(ctx) {
+        const { cmd, msg, uid } = ctx;
 
     if (cmd === '!mode normal') {
         userModes.set(uid, 'normal');
@@ -56,9 +51,10 @@ async function handleBasicCommands(ctx) {
         return true;
     }
 
-    return false;
+        return false;
+    };
 }
 
 module.exports = {
-    handleBasicCommands
+    createBasicCommandsHandler
 };
