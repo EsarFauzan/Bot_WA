@@ -374,8 +374,8 @@ function saveKuliahSchedule() {
 function generateDailyRandomZikirTimes() {
     const used = new Set(['05:00', '16:00', '23:00']);
     const times = [];
-    const minMinute = 6 * 60;
-    const maxMinute = 22 * 60;
+    const minMinute = 0;
+    const maxMinute = (23 * 60) + 59;
 
     while (times.length < 5) {
         const minute = Math.floor(Math.random() * (maxMinute - minMinute + 1)) + minMinute;
