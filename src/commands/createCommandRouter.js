@@ -43,7 +43,10 @@ function createCommandRouter(deps) {
     });
 
     const handleUtilityCommands = createUtilityCommandsHandler({
-        axios: deps.axios
+        axios: deps.axios,
+        zikirAutoTargets: deps.zikirAutoTargets,
+        saveZikirAutoTargets: deps.saveZikirAutoTargets,
+        getTodayRandomZikirTimes: deps.getTodayRandomZikirTimes
     });
 
     const handleProductivityCommands = createProductivityCommandsHandler({

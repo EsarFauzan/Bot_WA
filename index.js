@@ -14,6 +14,7 @@ const { getTimeContextInZone } = require('./src/utils/timeContext');
 const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
 const { createCommandRouter } = require('./src/commands/createCommandRouter');
+const { buildZikirMessageByType, buildRandomZikirMessage } = require('./src/commands/utilityCommands');
 const { buildHealthReport, buildHealthLogLine } = require('./src/monitoring/health');
 
 const REQUIRED_ENV = ['OPENROUTER_API_KEY'];
@@ -117,6 +118,8 @@ const CHAT_LOG_FILE   = path.join(__dirname, 'chat_logs.json');
 const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
 const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
+const ZIKIR_AUTO_FILE = path.join(__dirname, 'zikir_auto_targets.json');
+const ZIKIR_STATE_FILE = path.join(__dirname, 'zikir_auto_state.json');
 const NOTES_FILE      = path.join(__dirname, 'notes.json');
 const UJIAN_FILE      = path.join(__dirname, 'ujian.json');
 const TODO_FILE       = path.join(__dirname, 'todos.json');
@@ -129,12 +132,19 @@ let groupReminders = new Map();
 const prayerCache = new Map();
 // groupId → true (grup yang aktifkan reminder jadwal kuliah)
 let groupJadwal = new Map();
+// chatId/groupId -> true (chat yang aktifkan auto zikir)
+let zikirAutoTargets = new Map();
 // groupId → [ { id, isi, by, ts } ]
 let groupNotes = new Map();
 // userId/groupId → [ { task: string, done: boolean } ]
 let userTodos = new Map();
 // [ { nama, tanggal (YYYY-MM-DD), matkul } ]
 let jadwalUjian = [];
+let zikirAutoState = {
+    tglKey: '',
+    randomTimes: [],
+    sentKeys: []
+};
 
 // ============== LINK AKADEMIK ==============
 const AKADEMIK_FILE = path.join(__dirname, 'akademik.json');
@@ -188,6 +198,44 @@ function saveJadwalGroups() {
     try {
         const obj = Object.fromEntries(groupJadwal);
         fs.writeFileSync(JADWAL_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
+function loadZikirAutoTargets() {
+    try {
+        if (fs.existsSync(ZIKIR_AUTO_FILE)) {
+            const data = JSON.parse(fs.readFileSync(ZIKIR_AUTO_FILE, 'utf8'));
+            zikirAutoTargets = new Map(Object.entries(data));
+        }
+    } catch (e) {}
+}
+
+function saveZikirAutoTargets() {
+    try {
+        const obj = Object.fromEntries(zikirAutoTargets);
+        fs.writeFileSync(ZIKIR_AUTO_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
+function loadZikirAutoState() {
+    try {
+        if (!fs.existsSync(ZIKIR_STATE_FILE)) return;
+        const data = JSON.parse(fs.readFileSync(ZIKIR_STATE_FILE, 'utf8'));
+        if (!data || typeof data !== 'object') return;
+        if (typeof data.tglKey !== 'string') return;
+        if (!Array.isArray(data.randomTimes) || !Array.isArray(data.sentKeys)) return;
+
+        zikirAutoState = {
+            tglKey: data.tglKey,
+            randomTimes: data.randomTimes,
+            sentKeys: data.sentKeys
+        };
+    } catch (e) {}
+}
+
+function saveZikirAutoState() {
+    try {
+        fs.writeFileSync(ZIKIR_STATE_FILE, JSON.stringify(zikirAutoState, null, 2));
     } catch (e) {}
 }
 
@@ -323,6 +371,46 @@ function saveKuliahSchedule() {
     } catch (e) {}
 }
 
+function generateDailyRandomZikirTimes() {
+    const used = new Set(['05:00', '16:00', '23:00']);
+    const times = [];
+    const minMinute = 6 * 60;
+    const maxMinute = 22 * 60;
+
+    while (times.length < 5) {
+        const minute = Math.floor(Math.random() * (maxMinute - minMinute + 1)) + minMinute;
+        const hh = String(Math.floor(minute / 60)).padStart(2, '0');
+        const mm = String(minute % 60).padStart(2, '0');
+        const hhmm = `${hh}:${mm}`;
+        if (used.has(hhmm)) continue;
+        used.add(hhmm);
+        times.push(hhmm);
+    }
+
+    times.sort();
+    return times;
+}
+
+function ensureZikirStateForDate(tglKey) {
+    const isValidTimes = Array.isArray(zikirAutoState.randomTimes) && zikirAutoState.randomTimes.length === 5;
+    if (zikirAutoState.tglKey === tglKey && isValidTimes) {
+        return;
+    }
+
+    zikirAutoState = {
+        tglKey,
+        randomTimes: generateDailyRandomZikirTimes(),
+        sentKeys: []
+    };
+    saveZikirAutoState();
+}
+
+function getTodayRandomZikirTimes() {
+    const { tglKey } = getTimeContextInZone();
+    ensureZikirStateForDate(tglKey);
+    return zikirAutoState.randomTimes;
+}
+
 function loadStats() {
     try {
         const learningData = loadLearningData(LEARNING_FILE);
@@ -356,6 +444,8 @@ function logChat(userId, userMsg, botReply) {
 loadStats();
 loadReminders();
 loadJadwalGroups();
+loadZikirAutoTargets();
+loadZikirAutoState();
 loadKuliahSchedule();
 loadNotes();
 loadTodos();
@@ -815,6 +905,7 @@ client.on('ready', () => {
     if (!schedulersStarted) {
         startPrayerReminder();
         startJadwalReminder();
+        startZikirAutoReminder();
         schedulersStarted = true;
     }
     if (!healthMonitorStarted) {
@@ -943,6 +1034,64 @@ function startPrayerReminder() {
             }
         }
     }, 60 * 1000); // cek setiap 1 menit
+}
+
+// ============== AUTO ZIKIR SCHEDULER ==============
+function startZikirAutoReminder() {
+    console.log('📿 Auto zikir scheduler aktif');
+    setInterval(async () => {
+        if (zikirAutoTargets.size === 0) return;
+
+        const { jamMenit, tglKey } = getTimeContextInZone();
+        ensureZikirStateForDate(tglKey);
+
+        const fixedTimes = {
+            '05:00': 'pagi',
+            '16:00': 'sore',
+            '23:00': 'tidur'
+        };
+
+        const pending = [];
+        const fixedType = fixedTimes[jamMenit];
+        if (fixedType) {
+            const key = `fixed:${fixedType}`;
+            if (!zikirAutoState.sentKeys.includes(key)) {
+                const text = buildZikirMessageByType(fixedType);
+                if (text) {
+                    pending.push({
+                        key,
+                        text: `⏰ *REMINDER ZIKIR ${fixedType.toUpperCase()}*\n\n${text}`
+                    });
+                }
+            }
+        }
+
+        if (zikirAutoState.randomTimes.includes(jamMenit)) {
+            const key = `random:${jamMenit}`;
+            if (!zikirAutoState.sentKeys.includes(key)) {
+                pending.push({
+                    key,
+                    text: `🎲 *REMINDER ZIKIR RANDOM*\n\n${buildRandomZikirMessage({ includeHint: false })}`
+                });
+            }
+        }
+
+        if (pending.length === 0) return;
+
+        for (const item of pending) {
+            for (const [chatId] of zikirAutoTargets.entries()) {
+                try {
+                    await client.sendMessage(chatId, item.text);
+                    console.log(`📿 Auto zikir terkirim ke ${chatId}: ${item.key}`);
+                } catch (err) {
+                    console.error(`Error auto zikir ke ${chatId}:`, err.message);
+                }
+            }
+            zikirAutoState.sentKeys.push(item.key);
+        }
+
+        saveZikirAutoState();
+    }, 60 * 1000);
 }
 
 // ============== MESSAGE HANDLER ==============
@@ -1201,6 +1350,9 @@ const handleCommand = createCommandRouter({
     groupJadwal,
     saveJadwalGroups,
     saveKuliahSchedule,
+    zikirAutoTargets,
+    saveZikirAutoTargets,
+    getTodayRandomZikirTimes,
     getTimeContextInZone,
     NAMA_HARI,
     JADWAL_KULIAH,

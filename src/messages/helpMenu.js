@@ -86,6 +86,9 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !zikir tidur → Doa sebelum tidur
 !zikir makan → Doa makan & minum
 !zikir random → Zikir acak
+!zikir auto on → Aktifkan auto zikir di chat ini
+!zikir auto off → Matikan auto zikir
+!zikir auto → Cek status & jadwal auto zikir
 
 👨‍💻 *GitHub Tracker*
 !github [username] → Cek profil GitHub

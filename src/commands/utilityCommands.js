@@ -181,8 +181,36 @@ function formatZikir(data) {
     return teks;
 }
 
+function buildZikirMessageByType(type) {
+    if (!ZIKIR[type]) return null;
+    return formatZikir(ZIKIR[type]);
+}
+
+function buildRandomZikirMessage(options = {}) {
+    const includeHint = options.includeHint !== false;
+    const z = RANDOM_ZIKIR[Math.floor(Math.random() * RANDOM_ZIKIR.length)];
+
+    let teks = '📿 *ZIKIR RANDOM*\n';
+    teks += '─────────────────────\n\n';
+    teks += `${z.arab}\n\n`;
+    teks += `_${z.latin}_\n\n`;
+    teks += `📖 ${z.arti}\n\n`;
+    teks += `✨ *Faedah:* ${z.faedah}\n\n`;
+    teks += '─────────────────────\n';
+    if (includeHint) {
+        teks += '_Ketik !zikir random lagi untuk zikir lain 😊_';
+    }
+
+    return teks;
+}
+
 function createUtilityCommandsHandler(deps) {
-    const { axios } = deps;
+    const {
+        axios,
+        zikirAutoTargets = new Map(),
+        saveZikirAutoTargets = () => {},
+        getTodayRandomZikirTimes = () => []
+    } = deps;
 
     return async function handleUtilityCommands(ctx) {
         const { cmd, msg } = ctx;
@@ -462,26 +490,47 @@ function createUtilityCommandsHandler(deps) {
         const sub = cmd.slice(7).trim();
 
         if (!sub || sub === 'help') {
-            msg.reply('📿 *MENU ZIKIR & DOA*\n─────────────────────\n\n🌅 *!zikir pagi* → Zikir pagi lengkap\n🌆 *!zikir sore* → Zikir sore lengkap\n📿 *!zikir harian* → Zikir harian setelah sholat\n🌙 *!zikir tidur* → Doa sebelum tidur\n🍽️ *!zikir makan* → Doa makan & minum\n🎲 *!zikir random* → Satu zikir acak beserta faedahnya\n\n─────────────────────\n_Semoga istiqomah ya 😊_');
+            msg.reply('📿 *MENU ZIKIR & DOA*\n─────────────────────\n\n🌅 *!zikir pagi* → Zikir pagi lengkap\n🌆 *!zikir sore* → Zikir sore lengkap\n📿 *!zikir harian* → Zikir harian setelah sholat\n🌙 *!zikir tidur* → Doa sebelum tidur\n🍽️ *!zikir makan* → Doa makan & minum\n🎲 *!zikir random* → Satu zikir acak beserta faedahnya\n\n🤖 *AUTO ZIKIR*\n*!zikir auto on* → Aktifkan kirim otomatis di chat ini\n*!zikir auto off* → Matikan kirim otomatis\n*!zikir auto* → Lihat status & jadwal hari ini\n\n─────────────────────\n_Semoga istiqomah ya 😊_');
+            return true;
+        }
+
+        if (sub === 'auto on') {
+            zikirAutoTargets.set(msg.from, true);
+            saveZikirAutoTargets();
+            const randomTimes = typeof getTodayRandomZikirTimes === 'function'
+                ? getTodayRandomZikirTimes().join(', ')
+                : '-';
+            await msg.reply(`✅ Auto zikir aktif di chat ini.\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nJadwal random hari ini:\n• ${randomTimes}`);
+            return true;
+        }
+
+        if (sub === 'auto off') {
+            if (!zikirAutoTargets.has(msg.from)) {
+                await msg.reply('Auto zikir belum aktif di chat ini.');
+                return true;
+            }
+            zikirAutoTargets.delete(msg.from);
+            saveZikirAutoTargets();
+            await msg.reply('❌ Auto zikir dimatikan di chat ini.');
+            return true;
+        }
+
+        if (sub === 'auto' || sub === 'auto status') {
+            const isActive = zikirAutoTargets.has(msg.from);
+            const randomTimes = typeof getTodayRandomZikirTimes === 'function'
+                ? getTodayRandomZikirTimes().join(', ')
+                : '-';
+            await msg.reply(`📿 *Status Auto Zikir*\n─────────────────────\nStatus: ${isActive ? '✅ Aktif' : '❌ Tidak aktif'}\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nJadwal random hari ini:\n• ${randomTimes}`);
             return true;
         }
 
         if (ZIKIR[sub]) {
-            msg.reply(formatZikir(ZIKIR[sub]));
+            msg.reply(buildZikirMessageByType(sub));
             return true;
         }
 
         if (sub === 'random') {
-            const z = RANDOM_ZIKIR[Math.floor(Math.random() * RANDOM_ZIKIR.length)];
-            let teks = '📿 *ZIKIR RANDOM*\n';
-            teks += '─────────────────────\n\n';
-            teks += `${z.arab}\n\n`;
-            teks += `_${z.latin}_\n\n`;
-            teks += `📖 ${z.arti}\n\n`;
-            teks += `✨ *Faedah:* ${z.faedah}\n\n`;
-            teks += '─────────────────────\n';
-            teks += '_Ketik !zikir random lagi untuk zikir lain 😊_';
-            msg.reply(teks);
+            msg.reply(buildRandomZikirMessage());
             return true;
         }
 
@@ -494,5 +543,7 @@ function createUtilityCommandsHandler(deps) {
 }
 
 module.exports = {
-    createUtilityCommandsHandler
+    createUtilityCommandsHandler,
+    buildZikirMessageByType,
+    buildRandomZikirMessage
 };
