@@ -268,6 +268,36 @@ const cooldowns = new Map();
 const COOLDOWN = 2000;
 const userModes = new Map();
 
+const BOT_TIMEZONE = process.env.BOT_TIMEZONE || 'Asia/Makassar';
+const WEEKDAY_TO_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function getTimeContextInZone(date = new Date(), timeZone = BOT_TIMEZONE) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        weekday: 'short',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+
+    const parts = formatter.formatToParts(date);
+    const get = (type) => parts.find(p => p.type === type)?.value || '';
+
+    const year = get('year');
+    const month = get('month');
+    const day = get('day');
+    const weekday = get('weekday');
+
+    return {
+        hariIdx: WEEKDAY_TO_INDEX[weekday] ?? date.getDay(),
+        jamMenit: `${get('hour')}:${get('minute')}`,
+        tglKey: `${year}-${month}-${day}`
+    };
+}
+
 const delay = (min, max) => new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1)) + min));
 
 // ============== SALAM CHECKER ==============
@@ -779,10 +809,7 @@ function startJadwalReminder() {
     setInterval(async () => {
         if (groupJadwal.size === 0) return;
 
-        const now   = new Date();
-        const wib   = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-        const hari  = wib.getUTCDay();           // 0-6
-        const jamMenit = wib.toISOString().substr(11, 5); // HH:MM
+        const { hariIdx: hari, jamMenit } = getTimeContextInZone();
 
         for (const jadwal of JADWAL_KULIAH) {
             if (jadwal.hari !== hari || jadwal.reminder !== jamMenit) continue;
@@ -814,11 +841,7 @@ function startPrayerReminder() {
     setInterval(async () => {
         if (groupReminders.size === 0) return;
 
-        const now = new Date();
-        // Gunakan timezone WIB (UTC+8) — sesuaikan jika perlu
-        const wib = new Date(now.getTime() + (8 * 60 * 60 * 1000));
-        const jamMenit = wib.toISOString().substr(11, 5); // HH:MM
-        const tglKey   = wib.toISOString().substr(0, 10);  // YYYY-MM-DD
+        const { jamMenit, tglKey } = getTimeContextInZone();
 
         for (const [groupId, info] of groupReminders.entries()) {
             try {
@@ -862,9 +885,12 @@ client.on('message', async msg => {
     if (!['chat', 'image', 'video', 'document', 'sticker', 'ptt', 'audio'].includes(msg.type)) return;
 
     const isGroup = msg.from.includes('@g.us');
+    const rawBody = (msg.body || '');
+    const cleanBody = rawBody.replace(/@\d+/g, '').trim();
+    const isCommand = cleanBody.startsWith('!');
 
-    // Di grup → hanya respons kalau di-tag @Bot Esar atau di-reply ke bot
-    if (isGroup) {
+    // Di grup: command (!) boleh langsung, chat biasa harus mention bot
+    if (isGroup && !isCommand) {
         let isMentioned = false;
 
         try {
@@ -880,22 +906,21 @@ client.on('message', async msg => {
     }
 
     const userId = msg.from;
+    const senderId = isGroup ? (msg.author || userId) : userId;
+    const cooldownKey = isGroup ? `${userId}:${senderId}` : userId;
     const isImage = msg.type === 'image';
     const isVideo = msg.type === 'video';
     const isDocument = msg.type === 'document';
     const isAudio = msg.type === 'ptt' || msg.type === 'audio';
 
-    // Strip mention dari body supaya command bisa dikenali (contoh: "@bot !stiker" → "!stiker")
-    const rawBody = (msg.body || '');
-    const cleanBody = rawBody.replace(/@\d+/g, '').trim();
     const caption = cleanBody.toLowerCase().trim();
     const isStikerRequest = caption === 'stiker' || caption === 'sticker';
     console.log(`📩 ${isGroup ? '[GRUP]' : ''} ${userId}: ${(isImage || isVideo || isDocument) ? `[${msg.type.toUpperCase()}]` : rawBody}`);
 
     // Cooldown
-    const last = cooldowns.get(userId) || 0;
+    const last = cooldowns.get(cooldownKey) || 0;
     if (Date.now() - last < COOLDOWN) return;
-    cooldowns.set(userId, Date.now());
+    cooldowns.set(cooldownKey, Date.now());
 
     // Commands — cek dari cleanBody
     if (cleanBody.startsWith('!')) {
@@ -1553,10 +1578,7 @@ _Catatan: Gunakan nomor surah (1-114)_`
         msg.reply('❌ *Reminder jadwal kuliah dinonaktifkan* di grup ini.');
     }
     else if (cmd === '!jadwal') {
-        const hariIni = new Date();
-        // WIB
-        const wib = new Date(hariIni.getTime() + (8 * 60 * 60 * 1000));
-        const hariIdx = wib.getUTCDay();
+        const { hariIdx } = getTimeContextInZone();
         const statusGrup = msg.from.includes('@g.us')
             ? groupJadwal.has(msg.from) ? '✅ Reminder aktif di grup ini' : '❌ Reminder belum aktif (ketik !jadwal on)'
             : '';
@@ -2255,7 +2277,7 @@ _Semoga istiqomah ya 😊_`);
             const resultMedia = new MessageMedia('image/webp', webpBuffer.toString('base64'), 'result.webp');
             await client.sendMessage(uid, resultMedia, {
                 sendMediaAsSticker: true,
-                stickerName: 'BotBYEsarFauzan',
+                stickerName: 'BotBY.EF',
                 stickerAuthor: 'GooodBooy'
             });
             await msg.reply('Background udah dihapus 🎨 dikirim sebagai *stiker* biar transparan!');
@@ -2267,18 +2289,18 @@ _Semoga istiqomah ya 😊_`);
             if (status === 402) {
                 msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 gambar/bulan');
             } else if (status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses 😹 Coba gambar lain jo');
+                msg.reply('Gambarnya tidak bisa diproses 😹 Coba gambar lain yaa');
             } else if (status === 401) {
                 msg.reply('API key Clipdrop tidak valid 😹');
             } else {
-                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba jo lagi nanti`);
+                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi nanti`);
             }
         }
     }
     // ======== UPSCALE IMAGE ========
     else if (cmd === '!upscale') {
         const apiKey = process.env.CLIPDROP_API_KEY;
-        if (!apiKey) return msg.reply('API key Clipdrop belum diset ee 😹');
+        if (!apiKey) return msg.reply('API key Clipdrop belum diset 😹');
 
         let targetMsg = null;
 
@@ -2288,7 +2310,7 @@ _Semoga istiqomah ya 😊_`);
                 if (quoted.hasMedia && quoted.type === 'image') {
                     targetMsg = quoted;
                 } else {
-                    return msg.reply('Reply-nya harus gambar ee 😹');
+                    return msg.reply('Reply-nya harus gambar yaa 😹');
                 }
             } catch (e) {
                 return msg.reply('Gagal baca pesan yang di-reply 😹');
@@ -2302,17 +2324,17 @@ _Semoga istiqomah ya 😊_`);
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            await msg.reply('Bentar sy upscale dulu fotonya ee 🤭 sabar jo...');
+            await msg.reply('Bentar sy upscale dulu fotonya 🤭 sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
-            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+            if (!media) return msg.reply('Gagal download gambarnya 😹 coba lagi yaa');
 
             const imageBuffer = Buffer.from(media.data, 'base64');
             const pngBuffer = await sharp(imageBuffer).png().toBuffer();
             const resultBuffer = await upscaleImage(pngBuffer);
 
             const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
-            await msg.reply('Nih fotonya ee 🔍 kualitas udah ditingkatkan, rasio tetap sama!');
+            await msg.reply('Nih fotonya 🔍 kualitas udah ditingkatkan, rasio tetap sama!');
             await client.sendMessage(uid, resultMedia);
 
         } catch (err) {
@@ -2320,13 +2342,13 @@ _Semoga istiqomah ya 😊_`);
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
             console.error('Error !upscale:', status, err.message, errBody);
             if (status === 402) {
-                msg.reply('Kuota Clipdrop habis ee 😹 Gratis hanya 100 upscale/bulan');
+                msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 upscale/bulan');
             } else if (status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses ee 😹\nPastikan:\n• Format JPG/PNG\n• Ukuran maks 16MB\nCoba gambar lain jo');
+                msg.reply('Gambarnya tidak bisa diproses 😹\nPastikan:\n• Format JPG/PNG\n• Ukuran maks 16MB\nCoba gambar lain jo');
             } else if (status === 401) {
-                msg.reply('API key Clipdrop tidak valid ee 😹');
+                msg.reply('API key Clipdrop tidak valid 😹');
             } else {
-                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi jo`);
+                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi yaa`);
             }
         }
     }
