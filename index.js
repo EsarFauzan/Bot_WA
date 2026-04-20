@@ -13,6 +13,8 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { getTimeContextInZone } = require('./src/utils/timeContext');
 const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
+const { handleBasicCommands } = require('./src/commands/basicCommands');
+const { handleReminderJadwalCommands } = require('./src/commands/reminderJadwalCommands');
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
@@ -1101,14 +1103,34 @@ async function handleCommand(msg) {
     const uid = msg.from;
     const cmd = msg.body.toLowerCase().trim();
 
-    if (cmd === '!mode normal') { userModes.set(uid, 'normal'); msg.reply("✅ Mode: Normal"); }
-    else if (cmd === '!mode gombal') { userModes.set(uid, 'gombal'); msg.reply("💝 Mode Gombal aktif! Siap baper 😏"); }
-    else if (cmd === '!mode serious') { userModes.set(uid, 'serious'); msg.reply("🎯 Mode Serius. To the point."); }
-    else if (cmd === '!mode story') { userModes.set(uid, 'story'); msg.reply("📖 Mode Story aktif!"); }
-    else if (cmd === '!mode') { msg.reply(`🎭 Mode: ${userModes.get(uid) || 'normal'}\n\n!mode normal\n!mode gombal\n!mode serious\n!mode story`); }
-    else if (cmd === '!stats') { msg.reply(`📊 Total chat: ${stats.totalChats}\nTerakhir aktif: ${stats.lastActive || '-'}`); }
-    else if (cmd === '!reset') { history.delete(uid); userModes.delete(uid); msg.reply("🔄 Percakapan direset!"); }
-    else if (cmd === '!stiker') {
+    if (await handleBasicCommands({
+        cmd,
+        msg,
+        uid,
+        userModes,
+        stats,
+        history,
+        buildHelpMenu
+    })) {
+        return;
+    }
+
+    if (await handleReminderJadwalCommands({
+        cmd,
+        msg,
+        axios,
+        groupReminders,
+        saveReminders,
+        groupJadwal,
+        saveJadwalGroups,
+        getTimeContextInZone,
+        NAMA_HARI,
+        JADWAL_KULIAH
+    })) {
+        return;
+    }
+
+    if (cmd === '!stiker') {
         // Kasus 1: Kirim foto/video/GIF langsung + caption !stiker
         if (msg.hasMedia) {
             try {
@@ -1502,79 +1524,6 @@ _Catatan: Gunakan nomor surah (1-114)_`
             console.error('Error !quran:', err.message);
             msg.reply('Aduh gagal mengambil data Al-Quran 😹. Sedang ada masalah dari API pusat.');
         }
-    }
-    // ======== REMINDER OTOMATIS ========
-    else if (cmd.startsWith('!reminder on')) {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
-        const kotaNama = msg.body.trim().split(' ').slice(2).join(' ').trim();
-        if (!kotaNama) return msg.reply('Cara pakai: *!reminder on [kota]*\nContoh: !reminder on Palu');
-        try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
-            const cariRes = await axios.get(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(kotaNama)}`);
-            const kotaList = cariRes.data?.data;
-            if (!kotaList || kotaList.length === 0) {
-                return msg.reply(`Kota "${kotaNama}" tidak ditemukan 😹\nCoba nama kota lain jo`);
-            }
-            const kotaData = kotaList[0];
-            groupReminders.set(msg.from, {
-                kota: kotaNama,
-                kotaId: kotaData.id,
-                lokasi: kotaData.lokasi
-            });
-            saveReminders();
-            msg.reply(`✅ *Reminder Sholat Aktif!*\n📍 Kota: *${kotaData.lokasi}*\n\nBot akan kirim reminder otomatis di grup ini setiap:\n🔔 Imsak, 🌅 Subuh, 🌞 Dzuhur, 🌇 Ashar, 🍽️ Buka Puasa, 🌙 Isya\n\nUntuk nonaktifkan: *!reminder off*`);
-        } catch (err) {
-            console.error('Error !reminder on:', err.message);
-            msg.reply('Aduh gagal aktifkan reminder sy 😹 coba lagi yaa');
-        }
-    }
-    else if (cmd === '!reminder off') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
-        if (!groupReminders.has(msg.from)) return msg.reply('Reminder belum aktif di grup ini 😹');
-        groupReminders.delete(msg.from);
-        saveReminders();
-        msg.reply('❌ *Reminder sholat dinonaktifkan* di grup ini.');
-    }
-    else if (cmd === '!reminder') {
-        const status = groupReminders.has(msg.from)
-            ? `✅ Aktif - Kota: *${groupReminders.get(msg.from).lokasi}*`
-            : '❌ Tidak aktif';
-        msg.reply(`🔔 *Status Reminder Sholat*\n${status}\n\nCara pakai:\n*!reminder on [kota]* → aktifkan\n*!reminder off* → nonaktifkan`);
-    }
-    // ======== JADWAL KULIAH ========
-    else if (cmd === '!jadwal on') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
-        groupJadwal.set(msg.from, true);
-        saveJadwalGroups();
-        msg.reply(`✅ *Reminder Jadwal Kuliah Aktif!*\n\nBot akan kirim pengingat *1 jam sebelum* kuliah di grup ini setiap:\n\n📅 *Senin*\n• 08:10 → Jaringan Komputer (09:10)\n• 11:40 → Sistem Operasi (12:40)\n\n📅 *Selasa*\n• 06:30 → Keamanan Siber (07:30)\n• 13:20 → Keamanan Sistem Komputer (14:20)\n\n📅 *Rabu*\n• 11:30 → Pengembangan Aplikasi WEB (12:30)\n\n📅 *Kamis*\n• 09:55 → Pemodelan dan Simulasi (10:55)\n• 13:20 → Pengembangan Aplikasi Bergerak (14:20)\n\nUntuk nonaktifkan: *!jadwal off*`);
-    }
-    else if (cmd === '!jadwal off') {
-        if (!msg.from.includes('@g.us')) return msg.reply('Fitur ini hanya bisa dipakai di grup 😹');
-        if (!groupJadwal.has(msg.from)) return msg.reply('Reminder jadwal belum aktif di grup ini 😹');
-        groupJadwal.delete(msg.from);
-        saveJadwalGroups();
-        msg.reply('❌ *Reminder jadwal kuliah dinonaktifkan* di grup ini.');
-    }
-    else if (cmd === '!jadwal') {
-        const { hariIdx } = getTimeContextInZone();
-        const statusGrup = msg.from.includes('@g.us')
-            ? groupJadwal.has(msg.from) ? '✅ Reminder aktif di grup ini' : '❌ Reminder belum aktif (ketik !jadwal on)'
-            : '';
-
-        let jadwalText = `📚 *Jadwal Kuliah EsarFauzan*\n${statusGrup}\n─────────────────────\n`;
-
-        const hariList = [1,2,3,4];
-        for (const hari of hariList) {
-            const matkuls = JADWAL_KULIAH.filter(j => j.hari === hari);
-            const marker = hari === hariIdx ? ' ⬅️ *hari ini*' : '';
-            jadwalText += `\n📅 *${NAMA_HARI[hari]}*${marker}\n`;
-            for (const mk of matkuls) {
-                jadwalText += `• ${mk.mulai}–${mk.selesai} | ${mk.matkul}\n`;
-            }
-        }
-        jadwalText += `─────────────────────\n🔔 Reminder 1 jam sebelum kuliah\n!jadwal on → aktifkan di grup\n!jadwal off → nonaktifkan`;
-        msg.reply(jadwalText);
     }
     // ======== TO-DO LIST PRIBADI ========
     else if (cmd === '!todo' || cmd === '!todo list') {
@@ -2472,10 +2421,6 @@ _Semoga istiqomah ya 😊_`);
             console.error('Error !kompres:', err.message);
             msg.reply('Aduh gagal kompres fotonya ee 😹 coba lagi jo');
         }
-    }
-    else if (cmd === '!help' || cmd === '!menu') {
-        const currentMode = userModes.get(uid) || 'normal';
-        msg.reply(buildHelpMenu(currentMode));
     }
 }
 
