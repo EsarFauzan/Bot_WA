@@ -10,6 +10,9 @@ const ffmpegPath = require('ffmpeg-static');
 const axios = require('axios');
 const schedule = require('node-schedule');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { getTimeContextInZone } = require('./src/utils/timeContext');
+const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
+const { buildHelpMenu } = require('./src/messages/helpMenu');
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
@@ -99,6 +102,7 @@ const NOTES_FILE      = path.join(__dirname, 'notes.json');
 const UJIAN_FILE      = path.join(__dirname, 'ujian.json');
 const TODO_FILE       = path.join(__dirname, 'todos.json');
 let stats = { totalChats: 0, lastActive: null };
+let learningExpressions = [];
 
 // groupId → { kota, kotaId, lokasi }
 let groupReminders = new Map();
@@ -230,14 +234,19 @@ const NAMA_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 
 function loadStats() {
     try {
-        if (fs.existsSync(LEARNING_FILE)) {
-            stats = JSON.parse(fs.readFileSync(LEARNING_FILE, 'utf8'));
-        }
+        const learningData = loadLearningData(LEARNING_FILE);
+        stats = learningData.stats;
+        learningExpressions = learningData.expressions;
     } catch (e) { /* baru mulai */ }
 }
 
 function saveStats() {
-    try { fs.writeFileSync(LEARNING_FILE, JSON.stringify(stats, null, 2)); } catch (e) {}
+    try {
+        saveLearningData(LEARNING_FILE, {
+            stats,
+            expressions: learningExpressions
+        });
+    } catch (e) {}
 }
 
 function logChat(userId, userMsg, botReply) {
@@ -267,36 +276,6 @@ const MAX_HISTORY = 20;
 const cooldowns = new Map();
 const COOLDOWN = 2000;
 const userModes = new Map();
-
-const BOT_TIMEZONE = process.env.BOT_TIMEZONE || 'Asia/Makassar';
-const WEEKDAY_TO_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-
-function getTimeContextInZone(date = new Date(), timeZone = BOT_TIMEZONE) {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone,
-        weekday: 'short',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    });
-
-    const parts = formatter.formatToParts(date);
-    const get = (type) => parts.find(p => p.type === type)?.value || '';
-
-    const year = get('year');
-    const month = get('month');
-    const day = get('day');
-    const weekday = get('weekday');
-
-    return {
-        hariIdx: WEEKDAY_TO_INDEX[weekday] ?? date.getDay(),
-        jamMenit: `${get('hour')}:${get('minute')}`,
-        tglKey: `${year}-${month}-${day}`
-    };
-}
 
 const delay = (min, max) => new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1)) + min));
 
@@ -2496,101 +2475,7 @@ _Semoga istiqomah ya 😊_`);
     }
     else if (cmd === '!help' || cmd === '!menu') {
         const currentMode = userModes.get(uid) || 'normal';
-        const menuText = `🤖 *ESARFAUZAN BOT*
-Mode aktif: *${currentMode.toUpperCase()}*
-─────────────────────
-
-📥 *Download*
-!ig [link] → Download reels/post IG
-!tiktok [link] → Download video TikTok
-!yt [link] → Download video YouTube
-!yt audio [link] → Download MP3 YouTube
-
-🎬 *Video HD for Story*
-Kirim video as *Dokumen* → bot optimize & kirim balik
-!storyin → Reply video dokumen → convert HD
-
-🖼️ *Stiker & Edit Foto*
-Kirim foto/GIF + caption *stiker* → auto jadi stiker
-!stiker → Reply foto/GIF → jadikan stiker
-!rmbg → Hapus background foto → dikirim sebagai stiker transparan
-!upscale → Perbesar kualitas foto hingga 2048px 🔍
-!kompres → Kompres ukuran foto 📦
-!qr [teks/link] → Buat QR Code dari teks/link
-Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
-
-🎭 *Ganti Mode*
-!mode normal → Mode biasa
-!mode gombal → Mode gombal 💕
-!mode serious → Mode serius
-!mode story → Mode cerita
-
-🌤️ *Cuaca & Sholat*
-!cuaca [kota] → Cek cuaca kota
-!sholat [kota] → Jadwal sholat hari ini
-
-� *Al-Quran*
-!quran → Penjelasan menu Quran
-!quran [surah] → Info surah
-!quran [surah] [ayat] → Baca ayat spesifik
-
-�🔔 *Reminder Otomatis (Grup)*
-!reminder on [kota] → Aktifkan reminder sholat
-!reminder off → Nonaktifkan reminder
-!reminder → Cek status reminder
-
-📚 *Jadwal Kuliah*
-!jadwal → Lihat jadwal kuliah
-!jadwal on → Aktifkan reminder kuliah (grup)
-!jadwal off → Nonaktifkan reminder kuliah
-
-📝 *Catatan Grup*
-!catat [isi] → Simpan catatan
-!notes → Lihat semua catatan
-!hapus note [no] → Hapus catatan
-
-📋 *To-Do List Pribadi*
-!todo → Lihat daftar tugas
-!todo tambah [tugas] → Tambah tugas
-!todo coret [no,no] → Tandai selesai banyak sekaligus
-!todo hapus [no,no] → Hapus tugas banyak sekaligus
-
-⏰ *Pengingat / Alarm*
-!ingatkan [waktu] | [pesan]
-
-🎓 *Info Akademik*
-!akademik → Lihat semua link
-!akademik [nama] → Cari link
-!akademik tambah [nama] | [desk] | [url] → Tambah link
-!akademik hapus [no/nama] → Hapus link
-
-📝 *Countdown Ujian*
-!ujian → Lihat countdown ujian
-!ujian tambah [nama] | [DD-MM-YYYY] → Tambah jadwal
-!ujian hapus [no] → Hapus jadwal ujian
-
-🎌 *Anime*
-!anime [judul] → Cari anime di Kusonime
-
-📿 *Zikir & Doa*
-!zikir → Menu zikir & doa
-!zikir pagi → Zikir pagi
-!zikir sore → Zikir sore
-!zikir harian → Zikir harian
-!zikir tidur → Doa sebelum tidur
-!zikir makan → Doa makan & minum
-!zikir random → Zikir acak
-
-👨‍💻 *GitHub Tracker*
-!github [username] → Cek profil GitHub
-
-⚙️ *Lainnya*
-!stats → Statistik chat
-!reset → Reset riwayat
-!menu → Tampilkan menu ini
-─────────────────────
-`;
-        msg.reply(menuText);
+        msg.reply(buildHelpMenu(currentMode));
     }
 }
 
