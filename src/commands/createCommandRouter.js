@@ -18,6 +18,8 @@ function createCommandRouter(deps) {
         groupReminders: deps.groupReminders,
         saveReminders: deps.saveReminders,
         sholatModes: deps.sholatModes,
+        groupJadwalInsights: deps.groupJadwalInsights,
+        saveJadwalInsightGroups: deps.saveJadwalInsightGroups,
         groupJadwal: deps.groupJadwal,
         saveJadwalGroups: deps.saveJadwalGroups,
         saveKuliahSchedule: deps.saveKuliahSchedule,

@@ -119,6 +119,7 @@ const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
 const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
 const SHOLAT_MODE_FILE = path.join(__dirname, 'sholat_modes.json');
+const JADWAL_INSIGHT_GROUP_FILE = path.join(__dirname, 'jadwal_insight_groups.json');
 const JADWAL_INSIGHT_STATE_FILE = path.join(__dirname, 'jadwal_insight_state.json');
 const ZIKIR_AUTO_FILE = path.join(__dirname, 'zikir_auto_targets.json');
 const ZIKIR_STATE_FILE = path.join(__dirname, 'zikir_auto_state.json');
@@ -134,6 +135,8 @@ let groupReminders = new Map();
 const prayerCache = new Map();
 // groupId → true (grup yang aktifkan reminder jadwal kuliah)
 let groupJadwal = new Map();
+// groupId -> boolean (true=insight on, false=insight off)
+let groupJadwalInsights = new Map();
 // chatId/groupId -> 'puasa' | 'normal'
 let sholatModes = new Map();
 // chatId/groupId -> true (chat yang aktifkan auto zikir)
@@ -205,6 +208,22 @@ function saveJadwalGroups() {
     try {
         const obj = Object.fromEntries(groupJadwal);
         fs.writeFileSync(JADWAL_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
+function loadJadwalInsightGroups() {
+    try {
+        if (fs.existsSync(JADWAL_INSIGHT_GROUP_FILE)) {
+            const data = JSON.parse(fs.readFileSync(JADWAL_INSIGHT_GROUP_FILE, 'utf8'));
+            groupJadwalInsights = new Map(Object.entries(data));
+        }
+    } catch (e) {}
+}
+
+function saveJadwalInsightGroups() {
+    try {
+        const obj = Object.fromEntries(groupJadwalInsights);
+        fs.writeFileSync(JADWAL_INSIGHT_GROUP_FILE, JSON.stringify(obj, null, 2));
     } catch (e) {}
 }
 
@@ -565,6 +584,7 @@ function logChat(userId, userMsg, botReply) {
 loadStats();
 loadReminders();
 loadJadwalGroups();
+loadJadwalInsightGroups();
 loadSholatModes();
 loadJadwalInsightState();
 loadZikirAutoTargets();
@@ -1102,9 +1122,10 @@ function startJadwalReminder() {
 
             const eventBase = `${jadwal.hari}:${jadwal.reminder}:${jadwal.mulai}:${jadwal.matkul}`;
             const groupIds = Array.from(groupJadwal.keys());
+            const insightGroupIds = groupIds.filter((groupId) => groupJadwalInsights.get(groupId) !== false);
 
             if (jamMenit === factTime) {
-                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`fact:${groupId}:${eventBase}`));
+                const targetGroups = insightGroupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`fact:${groupId}:${eventBase}`));
                 if (targetGroups.length > 0) {
                     const factText = await buildLatestITFactMessage();
                     const message = `🧠 *FAKTA IT - 2 MENIT SEBELUM REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${factText}`;
@@ -1148,7 +1169,7 @@ _Jangan telat masuk kelas nya! 🙏_`;
             }
 
             if (jamMenit === quoteTime) {
-                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`quote:${groupId}:${eventBase}`));
+                const targetGroups = insightGroupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`quote:${groupId}:${eventBase}`));
                 if (targetGroups.length > 0) {
                     const quoteText = await buildITQuoteMessage();
                     const message = `✨ *QUOTES IT - 2 MENIT SETELAH REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${quoteText}`;
@@ -1562,6 +1583,8 @@ const handleCommand = createCommandRouter({
     saveReminders,
     sholatModes,
     saveSholatModes,
+    groupJadwalInsights,
+    saveJadwalInsightGroups,
     groupJadwal,
     saveJadwalGroups,
     saveKuliahSchedule,
