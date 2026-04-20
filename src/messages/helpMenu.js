@@ -1,5 +1,5 @@
 function buildHelpMenu(currentMode = 'normal') {
-    return `🤖 *ESARFAUZAN BOT*
+    return `🤖 *ASISTEN PRIBADI ESARFAUZAN*
 Mode aktif: *${String(currentMode).toUpperCase()}*
 ─────────────────────
 
