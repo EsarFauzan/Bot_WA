@@ -145,7 +145,6 @@ let userTodos = new Map();
 let jadwalUjian = [];
 let zikirAutoState = {
     tglKey: '',
-    randomTimes: [],
     sentKeys: []
 };
 
@@ -242,11 +241,10 @@ function loadZikirAutoState() {
         const data = JSON.parse(fs.readFileSync(ZIKIR_STATE_FILE, 'utf8'));
         if (!data || typeof data !== 'object') return;
         if (typeof data.tglKey !== 'string') return;
-        if (!Array.isArray(data.randomTimes) || !Array.isArray(data.sentKeys)) return;
+        if (!Array.isArray(data.sentKeys)) return;
 
         zikirAutoState = {
             tglKey: data.tglKey,
-            randomTimes: data.randomTimes,
             sentKeys: data.sentKeys
         };
     } catch (e) {}
@@ -390,44 +388,26 @@ function saveKuliahSchedule() {
     } catch (e) {}
 }
 
-function generateDailyRandomZikirTimes() {
-    const used = new Set(['05:00', '16:00', '23:00']);
-    const times = [];
-    const minMinute = 0;
-    const maxMinute = (23 * 60) + 59;
-
-    while (times.length < 5) {
-        const minute = Math.floor(Math.random() * (maxMinute - minMinute + 1)) + minMinute;
-        const hh = String(Math.floor(minute / 60)).padStart(2, '0');
-        const mm = String(minute % 60).padStart(2, '0');
-        const hhmm = `${hh}:${mm}`;
-        if (used.has(hhmm)) continue;
-        used.add(hhmm);
-        times.push(hhmm);
-    }
-
-    times.sort();
-    return times;
-}
-
 function ensureZikirStateForDate(tglKey) {
-    const isValidTimes = Array.isArray(zikirAutoState.randomTimes) && zikirAutoState.randomTimes.length === 5;
-    if (zikirAutoState.tglKey === tglKey && isValidTimes) {
+    if (zikirAutoState.tglKey === tglKey && Array.isArray(zikirAutoState.sentKeys)) {
         return;
     }
 
     zikirAutoState = {
         tglKey,
-        randomTimes: generateDailyRandomZikirTimes(),
         sentKeys: []
     };
     saveZikirAutoState();
 }
 
-function getTodayRandomZikirTimes() {
-    const { tglKey } = getTimeContextInZone();
-    ensureZikirStateForDate(tglKey);
-    return zikirAutoState.randomTimes;
+function addMinutesToTime(hhmm, offset) {
+    const match = String(hhmm || '').match(/^(\d{2}):(\d{2})$/);
+    if (!match) return null;
+    const total = (Number(match[1]) * 60) + Number(match[2]);
+    const shifted = (total + offset + (24 * 60)) % (24 * 60);
+    const outH = String(Math.floor(shifted / 60)).padStart(2, '0');
+    const outM = String(shifted % 60).padStart(2, '0');
+    return `${outH}:${outM}`;
 }
 
 function loadStats() {
@@ -1092,18 +1072,6 @@ function startZikirAutoReminder() {
             }
         }
 
-        if (zikirAutoState.randomTimes.includes(jamMenit)) {
-            const key = `random:${jamMenit}`;
-            if (!zikirAutoState.sentKeys.includes(key)) {
-                pending.push({
-                    key,
-                    text: `🎲 *REMINDER ZIKIR RANDOM*\n\n${buildRandomZikirMessage({ includeHint: false })}`
-                });
-            }
-        }
-
-        if (pending.length === 0) return;
-
         for (const item of pending) {
             for (const [chatId] of zikirAutoTargets.entries()) {
                 try {
@@ -1114,6 +1082,43 @@ function startZikirAutoReminder() {
                 }
             }
             zikirAutoState.sentKeys.push(item.key);
+        }
+
+        for (const [chatId] of zikirAutoTargets.entries()) {
+            try {
+                const info = groupReminders.get(chatId);
+                if (!info?.kotaId) continue;
+
+                const cacheKey = `${info.kotaId}_${tglKey}`;
+                if (!prayerCache.has(cacheKey)) {
+                    const res = await axios.get(`https://api.myquran.com/v2/sholat/jadwal/${info.kotaId}/${tglKey}`);
+                    const jadwal = res.data?.data?.jadwal;
+                    if (jadwal) prayerCache.set(cacheKey, jadwal);
+                }
+
+                const jadwal = prayerCache.get(cacheKey);
+                if (!jadwal) continue;
+
+                const triggerTimes = [
+                    { name: 'subuh', time: addMinutesToTime(jadwal.subuh, 5) },
+                    { name: 'dzuhur', time: addMinutesToTime(jadwal.dzuhur, 5) },
+                    { name: 'ashar', time: addMinutesToTime(jadwal.ashar, 5) },
+                    { name: 'maghrib', time: addMinutesToTime(jadwal.maghrib, 5) },
+                    { name: 'isya', time: addMinutesToTime(jadwal.isya, 5) }
+                ];
+
+                const hit = triggerTimes.find((t) => t.time === jamMenit);
+                if (!hit) continue;
+
+                const key = `${chatId}:post-${hit.name}`;
+                if (zikirAutoState.sentKeys.includes(key)) continue;
+
+                await client.sendMessage(chatId, `🎲 *ZIKIR RANDOM +5 MENIT SETELAH ${hit.name.toUpperCase()}*\n\n${buildRandomZikirMessage({ includeHint: false })}`);
+                console.log(`📿 Zikir random pasca sholat terkirim ke ${chatId}: ${hit.name}`);
+                zikirAutoState.sentKeys.push(key);
+            } catch (err) {
+                console.error(`Error auto zikir pasca sholat ke ${chatId}:`, err.message);
+            }
         }
 
         saveZikirAutoState();
@@ -1380,7 +1385,6 @@ const handleCommand = createCommandRouter({
     saveKuliahSchedule,
     zikirAutoTargets,
     saveZikirAutoTargets,
-    getTodayRandomZikirTimes,
     getTimeContextInZone,
     NAMA_HARI,
     JADWAL_KULIAH,

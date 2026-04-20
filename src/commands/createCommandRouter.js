@@ -50,8 +50,7 @@ function createCommandRouter(deps) {
         groupReminders: deps.groupReminders,
         saveReminders: deps.saveReminders,
         zikirAutoTargets: deps.zikirAutoTargets,
-        saveZikirAutoTargets: deps.saveZikirAutoTargets,
-        getTodayRandomZikirTimes: deps.getTodayRandomZikirTimes
+        saveZikirAutoTargets: deps.saveZikirAutoTargets
     });
 
     const handleProductivityCommands = createProductivityCommandsHandler({

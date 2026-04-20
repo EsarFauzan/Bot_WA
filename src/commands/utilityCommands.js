@@ -212,8 +212,7 @@ function createUtilityCommandsHandler(deps) {
         groupReminders = new Map(),
         saveReminders = () => {},
         zikirAutoTargets = new Map(),
-        saveZikirAutoTargets = () => {},
-        getTodayRandomZikirTimes = () => []
+        saveZikirAutoTargets = () => {}
     } = deps;
 
     return async function handleUtilityCommands(ctx) {
@@ -544,12 +543,14 @@ function createUtilityCommandsHandler(deps) {
         }
 
         if (sub === 'auto on') {
+            if (!groupReminders.has(msg.from)) {
+                await msg.reply('Aktifkan dulu reminder sholat di chat ini dengan *!reminder on [kota]* supaya bot tahu jadwal sholatnya.');
+                return true;
+            }
+
             zikirAutoTargets.set(msg.from, true);
             saveZikirAutoTargets();
-            const randomTimes = typeof getTodayRandomZikirTimes === 'function'
-                ? getTodayRandomZikirTimes().join(', ')
-                : '-';
-            await msg.reply(`✅ Auto zikir aktif di chat ini.\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nJadwal random hari ini:\n• ${randomTimes}`);
+            await msg.reply('✅ Auto zikir aktif di chat ini.\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nZikir random otomatis:\n• 5 menit setelah Subuh\n• 5 menit setelah Dzuhur\n• 5 menit setelah Ashar\n• 5 menit setelah Maghrib\n• 5 menit setelah Isya');
             return true;
         }
 
@@ -566,10 +567,10 @@ function createUtilityCommandsHandler(deps) {
 
         if (sub === 'auto' || sub === 'auto status') {
             const isActive = zikirAutoTargets.has(msg.from);
-            const randomTimes = typeof getTodayRandomZikirTimes === 'function'
-                ? getTodayRandomZikirTimes().join(', ')
-                : '-';
-            await msg.reply(`📿 *Status Auto Zikir*\n─────────────────────\nStatus: ${isActive ? '✅ Aktif' : '❌ Tidak aktif'}\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nJadwal random hari ini:\n• ${randomTimes}`);
+            const reminderStatus = groupReminders.has(msg.from)
+                ? '✅ Reminder sholat aktif'
+                : '❌ Reminder sholat belum aktif';
+            await msg.reply(`📿 *Status Auto Zikir*\n─────────────────────\nStatus: ${isActive ? '✅ Aktif' : '❌ Tidak aktif'}\n${reminderStatus}\n\nJadwal tetap:\n• Zikir pagi 05:00\n• Zikir sore 16:00\n• Zikir tidur 23:00\n\nZikir random otomatis:\n• 5 menit setelah Subuh\n• 5 menit setelah Dzuhur\n• 5 menit setelah Ashar\n• 5 menit setelah Maghrib\n• 5 menit setelah Isya`);
             return true;
         }
 
