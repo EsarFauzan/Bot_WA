@@ -116,6 +116,7 @@ const LEARNING_FILE   = path.join(__dirname, 'learned_data.json');
 const CHAT_LOG_FILE   = path.join(__dirname, 'chat_logs.json');
 const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
+const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
 const NOTES_FILE      = path.join(__dirname, 'notes.json');
 const UJIAN_FILE      = path.join(__dirname, 'ujian.json');
 const TODO_FILE       = path.join(__dirname, 'todos.json');
@@ -238,7 +239,7 @@ function saveUjian() {
 
 // ============== JADWAL KULIAH ==============
 // Hari: 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
-const JADWAL_KULIAH = [
+const DEFAULT_JADWAL_KULIAH = [
     { hari: 1, mulai: '09:10', selesai: '10:50', matkul: 'Jaringan Komputer',           reminder: '08:10' },
     { hari: 1, mulai: '12:40', selesai: '16:00', matkul: 'Sistem Operasi',               reminder: '11:40' },
     { hari: 2, mulai: '07:30', selesai: '09:10', matkul: 'Keamanan Siber',               reminder: '06:30' },
@@ -247,8 +248,80 @@ const JADWAL_KULIAH = [
     { hari: 4, mulai: '10:55', selesai: '12:30', matkul: 'Pemodelan dan Simulasi',       reminder: '09:55' },
     { hari: 4, mulai: '14:20', selesai: '18:00', matkul: 'Pengembangan Aplikasi Bergerak', reminder: '13:20' },
 ];
+let JADWAL_KULIAH = DEFAULT_JADWAL_KULIAH.map((item) => ({ ...item }));
 
 const NAMA_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+
+function buildReminderTimeFromStart(mulai) {
+    const match = String(mulai).match(/^(\d{2}):(\d{2})$/);
+    if (!match) return '';
+    const jam = Number(match[1]);
+    const menit = Number(match[2]);
+    const total = ((jam * 60 + menit) - 60 + 1440) % 1440;
+    const outJam = String(Math.floor(total / 60)).padStart(2, '0');
+    const outMenit = String(total % 60).padStart(2, '0');
+    return `${outJam}:${outMenit}`;
+}
+
+function sortKuliahSchedule() {
+    JADWAL_KULIAH.sort((a, b) => {
+        if (a.hari !== b.hari) return a.hari - b.hari;
+        return a.mulai.localeCompare(b.mulai);
+    });
+}
+
+function normalizeKuliahSchedule(rawData) {
+    if (!Array.isArray(rawData)) return [];
+
+    const valid = [];
+    for (const item of rawData) {
+        if (!item || typeof item !== 'object') continue;
+        const hari = Number(item.hari);
+        const mulai = String(item.mulai || '').trim();
+        const selesai = String(item.selesai || '').trim();
+        const matkul = String(item.matkul || '').trim();
+        const isTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+        if (!Number.isInteger(hari) || hari < 0 || hari > 6) continue;
+        if (!isTime.test(mulai) || !isTime.test(selesai)) continue;
+        if (!matkul) continue;
+
+        valid.push({
+            hari,
+            mulai,
+            selesai,
+            reminder: buildReminderTimeFromStart(mulai),
+            matkul
+        });
+    }
+
+    return valid;
+}
+
+function loadKuliahSchedule() {
+    try {
+        if (fs.existsSync(JADWAL_KULIAH_FILE)) {
+            const parsed = JSON.parse(fs.readFileSync(JADWAL_KULIAH_FILE, 'utf8'));
+            const normalized = normalizeKuliahSchedule(parsed);
+            if (normalized.length > 0) {
+                JADWAL_KULIAH = normalized;
+                sortKuliahSchedule();
+                return;
+            }
+        }
+
+        JADWAL_KULIAH = DEFAULT_JADWAL_KULIAH.map((item) => ({ ...item }));
+        sortKuliahSchedule();
+        fs.writeFileSync(JADWAL_KULIAH_FILE, JSON.stringify(JADWAL_KULIAH, null, 2));
+    } catch (e) {}
+}
+
+function saveKuliahSchedule() {
+    try {
+        sortKuliahSchedule();
+        fs.writeFileSync(JADWAL_KULIAH_FILE, JSON.stringify(JADWAL_KULIAH, null, 2));
+    } catch (e) {}
+}
 
 function loadStats() {
     try {
@@ -283,6 +356,7 @@ function logChat(userId, userMsg, botReply) {
 loadStats();
 loadReminders();
 loadJadwalGroups();
+loadKuliahSchedule();
 loadNotes();
 loadTodos();
 loadUjian();
@@ -1126,6 +1200,7 @@ const handleCommand = createCommandRouter({
     saveReminders,
     groupJadwal,
     saveJadwalGroups,
+    saveKuliahSchedule,
     getTimeContextInZone,
     NAMA_HARI,
     JADWAL_KULIAH,

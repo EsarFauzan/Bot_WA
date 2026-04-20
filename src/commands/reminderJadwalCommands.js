@@ -1,3 +1,73 @@
+function dayToIndex(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    const mapping = {
+        minggu: 0,
+        senin: 1,
+        selasa: 2,
+        rabu: 3,
+        kamis: 4,
+        jumat: 5,
+        "jum'at": 5,
+        sabtu: 6
+    };
+
+    if (/^[0-6]$/.test(raw)) return Number(raw);
+    return Object.prototype.hasOwnProperty.call(mapping, raw) ? mapping[raw] : null;
+}
+
+function isValidTime(value) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || '').trim());
+}
+
+function timeToMinutes(value) {
+    const [h, m] = String(value).split(':').map(Number);
+    return (h * 60) + m;
+}
+
+function buildReminderTimeFromStart(mulai) {
+    const total = (timeToMinutes(mulai) - 60 + 1440) % 1440;
+    const h = String(Math.floor(total / 60)).padStart(2, '0');
+    const m = String(total % 60).padStart(2, '0');
+    return `${h}:${m}`;
+}
+
+function sortJadwalKuliah(jadwalList) {
+    jadwalList.sort((a, b) => {
+        if (a.hari !== b.hari) return a.hari - b.hari;
+        return a.mulai.localeCompare(b.mulai);
+    });
+}
+
+function buildJadwalText({ JADWAL_KULIAH, NAMA_HARI, hariIdx, statusGrup, includeGuide }) {
+    let text = `📚 *Jadwal Kuliah EsarFauzan*\n${statusGrup || ''}\n─────────────────────\n`;
+    let nomor = 1;
+
+    for (let hari = 1; hari <= 6; hari++) {
+        const items = JADWAL_KULIAH.filter((j) => j.hari === hari);
+        if (items.length === 0) continue;
+
+        const marker = hari === hariIdx ? ' ⬅️ *hari ini*' : '';
+        text += `\n📅 *${NAMA_HARI[hari]}*${marker}\n`;
+
+        for (const item of items) {
+            text += `${nomor}. ${item.mulai}-${item.selesai} | ${item.matkul} (reminder ${item.reminder})\n`;
+            nomor += 1;
+        }
+    }
+
+    if (nomor === 1) {
+        text += '\nBelum ada jadwal kuliah tersimpan.\n';
+    }
+
+    text += '─────────────────────\n🔔 Reminder 1 jam sebelum kuliah\n!jadwal on → aktifkan di grup\n!jadwal off → nonaktifkan';
+
+    if (includeGuide) {
+        text += '\n\n✏️ Kelola jadwal:\n!jadwal tambah [hari] | [mulai] | [selesai] | [matkul]\n!jadwal ubah [no] | [hari] | [mulai] | [selesai] | [matkul]\n!jadwal hapus [no]';
+    }
+
+    return text;
+}
+
 function createReminderJadwalCommandsHandler(deps) {
     const {
         axios,
@@ -5,6 +75,7 @@ function createReminderJadwalCommandsHandler(deps) {
         saveReminders,
         groupJadwal,
         saveJadwalGroups,
+        saveKuliahSchedule,
         getTimeContextInZone,
         NAMA_HARI,
         JADWAL_KULIAH
@@ -84,7 +155,14 @@ function createReminderJadwalCommandsHandler(deps) {
 
         groupJadwal.set(msg.from, true);
         saveJadwalGroups();
-        await msg.reply(`✅ *Reminder Jadwal Kuliah Aktif!*\n\nBot akan kirim pengingat *1 jam sebelum* kuliah di grup ini setiap:\n\n📅 *Senin*\n• 08:10 → Jaringan Komputer (09:10)\n• 11:40 → Sistem Operasi (12:40)\n\n📅 *Selasa*\n• 06:30 → Keamanan Siber (07:30)\n• 13:20 → Keamanan Sistem Komputer (14:20)\n\n📅 *Rabu*\n• 11:30 → Pengembangan Aplikasi WEB (12:30)\n\n📅 *Kamis*\n• 09:55 → Pemodelan dan Simulasi (10:55)\n• 13:20 → Pengembangan Aplikasi Bergerak (14:20)\n\nUntuk nonaktifkan: *!jadwal off*`);
+        const jadwalRingkas = buildJadwalText({
+            JADWAL_KULIAH,
+            NAMA_HARI,
+            hariIdx: -1,
+            statusGrup: '✅ Reminder aktif di grup ini',
+            includeGuide: false
+        });
+        await msg.reply(`✅ *Reminder Jadwal Kuliah Aktif!*\n\n${jadwalRingkas}`);
         return true;
     }
 
@@ -105,26 +183,126 @@ function createReminderJadwalCommandsHandler(deps) {
         return true;
     }
 
+    if (cmd.startsWith('!jadwal tambah')) {
+        const raw = msg.body.replace(/^!jadwal tambah\s*/i, '').trim();
+        const parts = raw.split('|').map((part) => part.trim());
+
+        if (parts.length !== 4 || parts.some((part) => !part)) {
+            await msg.reply('Format salah 😹\nContoh: !jadwal tambah Senin | 09:10 | 10:50 | Jaringan Komputer');
+            return true;
+        }
+
+        const [hariRaw, mulai, selesai, matkul] = parts;
+        const hari = dayToIndex(hariRaw);
+
+        if (hari === null) {
+            await msg.reply('Hari tidak valid. Pakai nama hari (Senin-Sabtu) atau angka 1-6.');
+            return true;
+        }
+        if (!isValidTime(mulai) || !isValidTime(selesai)) {
+            await msg.reply('Format jam tidak valid. Gunakan HH:MM, contoh 09:10');
+            return true;
+        }
+        if (timeToMinutes(selesai) <= timeToMinutes(mulai)) {
+            await msg.reply('Jam selesai harus lebih besar dari jam mulai.');
+            return true;
+        }
+
+        JADWAL_KULIAH.push({
+            hari,
+            mulai,
+            selesai,
+            reminder: buildReminderTimeFromStart(mulai),
+            matkul
+        });
+        sortJadwalKuliah(JADWAL_KULIAH);
+        saveKuliahSchedule();
+
+        await msg.reply(`✅ Jadwal berhasil ditambah:\n${NAMA_HARI[hari]} ${mulai}-${selesai} | ${matkul}`);
+        return true;
+    }
+
+    if (cmd.startsWith('!jadwal ubah')) {
+        const raw = msg.body.replace(/^!jadwal ubah\s*/i, '').trim();
+        const parts = raw.split('|').map((part) => part.trim());
+
+        if (parts.length !== 5 || parts.some((part) => !part)) {
+            await msg.reply('Format salah 😹\nContoh: !jadwal ubah 1 | Senin | 09:10 | 10:50 | Jaringan Komputer');
+            return true;
+        }
+
+        sortJadwalKuliah(JADWAL_KULIAH);
+        const nomor = Number(parts[0]);
+        if (!Number.isInteger(nomor) || nomor < 1 || nomor > JADWAL_KULIAH.length) {
+            await msg.reply(`Nomor jadwal tidak valid. Pilih 1 sampai ${JADWAL_KULIAH.length || 1}.`);
+            return true;
+        }
+
+        const [_, hariRaw, mulai, selesai, matkul] = parts;
+        const hari = dayToIndex(hariRaw);
+
+        if (hari === null) {
+            await msg.reply('Hari tidak valid. Pakai nama hari (Senin-Sabtu) atau angka 1-6.');
+            return true;
+        }
+        if (!isValidTime(mulai) || !isValidTime(selesai)) {
+            await msg.reply('Format jam tidak valid. Gunakan HH:MM, contoh 09:10');
+            return true;
+        }
+        if (timeToMinutes(selesai) <= timeToMinutes(mulai)) {
+            await msg.reply('Jam selesai harus lebih besar dari jam mulai.');
+            return true;
+        }
+
+        JADWAL_KULIAH[nomor - 1] = {
+            hari,
+            mulai,
+            selesai,
+            reminder: buildReminderTimeFromStart(mulai),
+            matkul
+        };
+        sortJadwalKuliah(JADWAL_KULIAH);
+        saveKuliahSchedule();
+
+        await msg.reply(`✅ Jadwal nomor ${nomor} berhasil diubah:\n${NAMA_HARI[hari]} ${mulai}-${selesai} | ${matkul}`);
+        return true;
+    }
+
+    if (cmd.startsWith('!jadwal hapus')) {
+        sortJadwalKuliah(JADWAL_KULIAH);
+        const match = msg.body.trim().match(/^!jadwal hapus\s+(\d+)$/i);
+        if (!match) {
+            await msg.reply('Format salah 😹\nContoh: !jadwal hapus 1');
+            return true;
+        }
+
+        const nomor = Number(match[1]);
+        if (!Number.isInteger(nomor) || nomor < 1 || nomor > JADWAL_KULIAH.length) {
+            await msg.reply(`Nomor jadwal tidak valid. Pilih 1 sampai ${JADWAL_KULIAH.length || 1}.`);
+            return true;
+        }
+
+        const removed = JADWAL_KULIAH.splice(nomor - 1, 1)[0];
+        saveKuliahSchedule();
+        await msg.reply(`🗑️ Jadwal dihapus:\n${NAMA_HARI[removed.hari]} ${removed.mulai}-${removed.selesai} | ${removed.matkul}`);
+        return true;
+    }
+
     if (cmd === '!jadwal') {
+        sortJadwalKuliah(JADWAL_KULIAH);
         const { hariIdx } = getTimeContextInZone();
         const statusGrup = msg.from.includes('@g.us')
             ? groupJadwal.has(msg.from)
                 ? '✅ Reminder aktif di grup ini'
                 : '❌ Reminder belum aktif (ketik !jadwal on)'
             : '';
-
-        let jadwalText = `📚 *Jadwal Kuliah EsarFauzan*\n${statusGrup}\n─────────────────────\n`;
-        const hariList = [1, 2, 3, 4];
-        for (const hari of hariList) {
-            const matkuls = JADWAL_KULIAH.filter((j) => j.hari === hari);
-            const marker = hari === hariIdx ? ' ⬅️ *hari ini*' : '';
-            jadwalText += `\n📅 *${NAMA_HARI[hari]}*${marker}\n`;
-            for (const mk of matkuls) {
-                jadwalText += `• ${mk.mulai}–${mk.selesai} | ${mk.matkul}\n`;
-            }
-        }
-
-        jadwalText += '─────────────────────\n🔔 Reminder 1 jam sebelum kuliah\n!jadwal on → aktifkan di grup\n!jadwal off → nonaktifkan';
+        const jadwalText = buildJadwalText({
+            JADWAL_KULIAH,
+            NAMA_HARI,
+            hariIdx,
+            statusGrup,
+            includeGuide: true
+        });
         await msg.reply(jadwalText);
         return true;
     }

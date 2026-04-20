@@ -19,6 +19,7 @@ function createCommandRouter(deps) {
         saveReminders: deps.saveReminders,
         groupJadwal: deps.groupJadwal,
         saveJadwalGroups: deps.saveJadwalGroups,
+        saveKuliahSchedule: deps.saveKuliahSchedule,
         getTimeContextInZone: deps.getTimeContextInZone,
         NAMA_HARI: deps.NAMA_HARI,
         JADWAL_KULIAH: deps.JADWAL_KULIAH

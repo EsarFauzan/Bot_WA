@@ -46,6 +46,9 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 !jadwal → Lihat jadwal kuliah
 !jadwal on → Aktifkan reminder kuliah (grup)
 !jadwal off → Nonaktifkan reminder kuliah
+!jadwal tambah [hari] | [mulai] | [selesai] | [matkul]
+!jadwal ubah [no] | [hari] | [mulai] | [selesai] | [matkul]
+!jadwal hapus [no]
 
 📝 *Catatan Grup*
 !catat [isi] → Simpan catatan
