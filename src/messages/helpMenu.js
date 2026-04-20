@@ -31,6 +31,9 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 🌤️ *Cuaca & Sholat*
 !cuaca [kota] → Cek cuaca kota
 !sholat [kota] → Jadwal sholat hari ini
+!sholat mode puasa → Tampilkan imsak & buka puasa
+!sholat mode normal → Sembunyikan imsak & buka puasa
+!sholat mode → Cek mode sholat saat ini
 
 📖 *Al-Quran*
 !quran → Penjelasan menu Quran

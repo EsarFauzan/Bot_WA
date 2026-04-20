@@ -118,6 +118,7 @@ const CHAT_LOG_FILE   = path.join(__dirname, 'chat_logs.json');
 const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
 const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
 const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
+const SHOLAT_MODE_FILE = path.join(__dirname, 'sholat_modes.json');
 const ZIKIR_AUTO_FILE = path.join(__dirname, 'zikir_auto_targets.json');
 const ZIKIR_STATE_FILE = path.join(__dirname, 'zikir_auto_state.json');
 const NOTES_FILE      = path.join(__dirname, 'notes.json');
@@ -132,6 +133,8 @@ let groupReminders = new Map();
 const prayerCache = new Map();
 // groupId → true (grup yang aktifkan reminder jadwal kuliah)
 let groupJadwal = new Map();
+// chatId/groupId -> 'puasa' | 'normal'
+let sholatModes = new Map();
 // chatId/groupId -> true (chat yang aktifkan auto zikir)
 let zikirAutoTargets = new Map();
 // groupId → [ { id, isi, by, ts } ]
@@ -198,6 +201,22 @@ function saveJadwalGroups() {
     try {
         const obj = Object.fromEntries(groupJadwal);
         fs.writeFileSync(JADWAL_FILE, JSON.stringify(obj, null, 2));
+    } catch (e) {}
+}
+
+function loadSholatModes() {
+    try {
+        if (fs.existsSync(SHOLAT_MODE_FILE)) {
+            const data = JSON.parse(fs.readFileSync(SHOLAT_MODE_FILE, 'utf8'));
+            sholatModes = new Map(Object.entries(data));
+        }
+    } catch (e) {}
+}
+
+function saveSholatModes() {
+    try {
+        const obj = Object.fromEntries(sholatModes);
+        fs.writeFileSync(SHOLAT_MODE_FILE, JSON.stringify(obj, null, 2));
     } catch (e) {}
 }
 
@@ -444,6 +463,7 @@ function logChat(userId, userMsg, botReply) {
 loadStats();
 loadReminders();
 loadJadwalGroups();
+loadSholatModes();
 loadZikirAutoTargets();
 loadZikirAutoState();
 loadKuliahSchedule();
@@ -1017,12 +1037,18 @@ function startPrayerReminder() {
                 const jadwal = prayerCache.get(cacheKey);
                 if (!jadwal) continue;
 
+                const isPuasaMode = info?.puasaMode === true;
+
                 let pesan = null;
-                if (jamMenit === jadwal.imsak)   pesan = `🔔 *IMSAK* - ${info.lokasi}\n🕐 ${jadwal.imsak}\n\n_Segera akhiri makan sahur! Imsak sudah masuk_ 🌙`;
+                if (isPuasaMode && jamMenit === jadwal.imsak) pesan = `🔔 *IMSAK* - ${info.lokasi}\n🕐 ${jadwal.imsak}\n\n_Segera akhiri makan sahur! Imsak sudah masuk_ 🌙`;
                 else if (jamMenit === jadwal.subuh)  pesan = `🌅 *SUBUH* - ${info.lokasi}\n🕐 ${jadwal.subuh}\n\n_Waktunya sholat Subuh! Jangan sampai ketinggalan_ 🙏`;
                 else if (jamMenit === jadwal.dzuhur) pesan = `🌞 *DZUHUR* - ${info.lokasi}\n🕐 ${jadwal.dzuhur}\n\n_Waktunya sholat Dzuhur! Luangkan waktu sebentar_ 🙏`;
                 else if (jamMenit === jadwal.ashar)  pesan = `🌇 *ASHAR* - ${info.lokasi}\n🕐 ${jadwal.ashar}\n\n_Waktunya sholat Ashar! Jangan ditunda_ 🙏`;
-                else if (jamMenit === jadwal.maghrib) pesan = `🍽️ *BUKA PUASA & MAGHRIB* - ${info.lokasi}\n🕐 ${jadwal.maghrib}\n\n_Alhamdulillah, waktunya berbuka puasa! Selamat berbuka_ 😊🎉`;
+                else if (jamMenit === jadwal.maghrib) {
+                    pesan = isPuasaMode
+                        ? `🍽️ *BUKA PUASA & MAGHRIB* - ${info.lokasi}\n🕐 ${jadwal.maghrib}\n\n_Alhamdulillah, waktunya berbuka puasa! Selamat berbuka_ 😊🎉`
+                        : `🌆 *MAGHRIB* - ${info.lokasi}\n🕐 ${jadwal.maghrib}\n\n_Waktunya sholat Maghrib_ 🙏`;
+                }
                 else if (jamMenit === jadwal.isya)   pesan = `🌙 *ISYA* - ${info.lokasi}\n🕐 ${jadwal.isya}\n\n_Waktunya sholat Isya! Tutup hari dengan ibadah_ 🙏`;
 
                 if (pesan) {
@@ -1347,6 +1373,8 @@ const handleCommand = createCommandRouter({
     getHealthStatus,
     groupReminders,
     saveReminders,
+    sholatModes,
+    saveSholatModes,
     groupJadwal,
     saveJadwalGroups,
     saveKuliahSchedule,

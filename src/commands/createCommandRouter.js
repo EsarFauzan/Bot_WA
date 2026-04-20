@@ -17,6 +17,7 @@ function createCommandRouter(deps) {
         axios: deps.axios,
         groupReminders: deps.groupReminders,
         saveReminders: deps.saveReminders,
+        sholatModes: deps.sholatModes,
         groupJadwal: deps.groupJadwal,
         saveJadwalGroups: deps.saveJadwalGroups,
         saveKuliahSchedule: deps.saveKuliahSchedule,
@@ -44,6 +45,10 @@ function createCommandRouter(deps) {
 
     const handleUtilityCommands = createUtilityCommandsHandler({
         axios: deps.axios,
+        sholatModes: deps.sholatModes,
+        saveSholatModes: deps.saveSholatModes,
+        groupReminders: deps.groupReminders,
+        saveReminders: deps.saveReminders,
         zikirAutoTargets: deps.zikirAutoTargets,
         saveZikirAutoTargets: deps.saveZikirAutoTargets,
         getTodayRandomZikirTimes: deps.getTodayRandomZikirTimes

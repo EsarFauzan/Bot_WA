@@ -207,6 +207,10 @@ function buildRandomZikirMessage(options = {}) {
 function createUtilityCommandsHandler(deps) {
     const {
         axios,
+        sholatModes = new Map(),
+        saveSholatModes = () => {},
+        groupReminders = new Map(),
+        saveReminders = () => {},
         zikirAutoTargets = new Map(),
         saveZikirAutoTargets = () => {},
         getTodayRandomZikirTimes = () => []
@@ -257,6 +261,38 @@ function createUtilityCommandsHandler(deps) {
         return true;
     }
 
+    if (cmd.startsWith('!sholat mode')) {
+        const sub = cmd.replace('!sholat mode', '').trim();
+
+        if (!sub) {
+            const modeNow = sholatModes.get(msg.from) === 'puasa' ? 'puasa' : 'normal';
+            await msg.reply(`🕌 *Mode Sholat Saat Ini*\nMode: *${modeNow}*\n\nPerintah:\n*!sholat mode puasa*\n*!sholat mode normal*`);
+            return true;
+        }
+
+        if (sub !== 'puasa' && sub !== 'normal' && sub !== 'nonpuasa') {
+            await msg.reply('Mode tidak valid. Gunakan *puasa* atau *normal*.');
+            return true;
+        }
+
+        const modeFinal = sub === 'puasa' ? 'puasa' : 'normal';
+        const isPuasaMode = modeFinal === 'puasa';
+        sholatModes.set(msg.from, modeFinal);
+        saveSholatModes();
+
+        if (groupReminders.has(msg.from)) {
+            const info = groupReminders.get(msg.from) || {};
+            groupReminders.set(msg.from, {
+                ...info,
+                puasaMode: isPuasaMode
+            });
+            saveReminders();
+        }
+
+        await msg.reply(`✅ Mode sholat di chat ini diatur ke *${modeFinal}*.\n${isPuasaMode ? 'Imsak dan buka puasa akan ditampilkan.' : 'Imsak dan buka puasa disembunyikan.'}`);
+        return true;
+    }
+
     if (cmd.startsWith('!sholat ')) {
         const kota = msg.body.trim().split(' ').slice(1).join(' ').trim();
         if (!kota) {
@@ -284,7 +320,20 @@ function createUtilityCommandsHandler(deps) {
             }
 
             const hariNama = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-            const teks = `🕌 *Jadwal Sholat ${kotaData.lokasi}*\n📅 ${hariNama[today.getDay()]}, ${jadwal.tanggal}\n🌙 *Ramadan 1446 H*\n─────────────────────\n🔔 Imsak   : *${jadwal.imsak}*\n🌅 Subuh   : *${jadwal.subuh}*\n🌄 Terbit  : *${jadwal.terbit}*\n☀️ Dhuha   : *${jadwal.dhuha}*\n🌞 Dzuhur  : *${jadwal.dzuhur}*\n🌇 Ashar   : *${jadwal.ashar}*\n🍽️ Buka    : *${jadwal.maghrib}*\n🌙 Isya    : *${jadwal.isya}*\n─────────────────────\n💡 _Imsak = batas makan sahur_\n🍽️ _Buka puasa = waktu maghrib_`;
+            const isPuasaMode = sholatModes.get(msg.from) === 'puasa';
+            let teks = `🕌 *Jadwal Sholat ${kotaData.lokasi}*\n📅 ${hariNama[today.getDay()]}, ${jadwal.tanggal}\n⚙️ Mode: *${isPuasaMode ? 'puasa' : 'normal'}*\n─────────────────────\n`;
+            if (isPuasaMode) teks += `🔔 Imsak   : *${jadwal.imsak}*\n`;
+            teks += `🌅 Subuh   : *${jadwal.subuh}*\n`;
+            teks += `🌄 Terbit  : *${jadwal.terbit}*\n`;
+            teks += `☀️ Dhuha   : *${jadwal.dhuha}*\n`;
+            teks += `🌞 Dzuhur  : *${jadwal.dzuhur}*\n`;
+            teks += `🌇 Ashar   : *${jadwal.ashar}*\n`;
+            teks += `${isPuasaMode ? '🍽️ Buka' : '🌆 Maghrib'}  : *${jadwal.maghrib}*\n`;
+            teks += `🌙 Isya    : *${jadwal.isya}*\n`;
+            teks += '─────────────────────';
+            if (isPuasaMode) {
+                teks += '\n💡 _Imsak = batas makan sahur_\n🍽️ _Buka puasa = waktu maghrib_';
+            }
             await msg.reply(teks);
         } catch (err) {
             console.error('Error !sholat:', err.message);
@@ -295,7 +344,7 @@ function createUtilityCommandsHandler(deps) {
     }
 
     if (cmd === '!sholat') {
-        msg.reply('Cara pakai: *!sholat [nama kota]*\n\nContoh:\n!sholat Palu\n!sholat Jakarta\n!sholat Makassar');
+        msg.reply('Cara pakai: *!sholat [nama kota]*\n\nContoh:\n!sholat Palu\n!sholat Jakarta\n!sholat Makassar\n\nMode:\n!sholat mode puasa\n!sholat mode normal\n!sholat mode');
         return true;
     }
 

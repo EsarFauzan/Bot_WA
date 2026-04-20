@@ -73,6 +73,7 @@ function createReminderJadwalCommandsHandler(deps) {
         axios,
         groupReminders,
         saveReminders,
+        sholatModes = new Map(),
         groupJadwal,
         saveJadwalGroups,
         saveKuliahSchedule,
@@ -107,13 +108,19 @@ function createReminderJadwalCommandsHandler(deps) {
             }
 
             const kotaData = kotaList[0];
+            const isPuasaMode = sholatModes.get(msg.from) === 'puasa';
             groupReminders.set(msg.from, {
                 kota: kotaNama,
                 kotaId: kotaData.id,
-                lokasi: kotaData.lokasi
+                lokasi: kotaData.lokasi,
+                puasaMode: isPuasaMode
             });
             saveReminders();
-            await msg.reply(`✅ *Reminder Sholat Aktif!*\n📍 Kota: *${kotaData.lokasi}*\n\nBot akan kirim reminder otomatis di grup ini setiap:\n🔔 Imsak, 🌅 Subuh, 🌞 Dzuhur, 🌇 Ashar, 🍽️ Buka Puasa, 🌙 Isya\n\nUntuk nonaktifkan: *!reminder off*`);
+            const modeLabel = isPuasaMode ? 'puasa' : 'normal';
+            const listJadwal = isPuasaMode
+                ? '🔔 Imsak, 🌅 Subuh, 🌞 Dzuhur, 🌇 Ashar, 🍽️ Buka Puasa, 🌙 Isya'
+                : '🌅 Subuh, 🌞 Dzuhur, 🌇 Ashar, 🌆 Maghrib, 🌙 Isya';
+            await msg.reply(`✅ *Reminder Sholat Aktif!*\n📍 Kota: *${kotaData.lokasi}*\n⚙️ Mode: *${modeLabel}*\n\nBot akan kirim reminder otomatis di grup ini setiap:\n${listJadwal}\n\nUntuk nonaktifkan: *!reminder off*\nUbah mode: *!sholat mode puasa* / *!sholat mode normal*`);
         } catch (err) {
             console.error('Error !reminder on:', err.message);
             await msg.reply('Aduh gagal aktifkan reminder sy 😹 coba lagi yaa');
@@ -140,9 +147,12 @@ function createReminderJadwalCommandsHandler(deps) {
     }
 
     if (cmd === '!reminder') {
-        const status = groupReminders.has(msg.from)
-            ? `✅ Aktif - Kota: *${groupReminders.get(msg.from).lokasi}*`
-            : '❌ Tidak aktif';
+        let status = '❌ Tidak aktif';
+        if (groupReminders.has(msg.from)) {
+            const info = groupReminders.get(msg.from);
+            const modeLabel = info?.puasaMode === true ? 'puasa' : 'normal';
+            status = `✅ Aktif - Kota: *${info.lokasi}*\n⚙️ Mode: *${modeLabel}*`;
+        }
         await msg.reply(`🔔 *Status Reminder Sholat*\n${status}\n\nCara pakai:\n*!reminder on [kota]* → aktifkan\n*!reminder off* → nonaktifkan`);
         return true;
     }
