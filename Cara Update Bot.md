@@ -1,170 +1,117 @@
-Cara Update Bot:
+Cara Update Bot (Versi Aman)
 
-1\. Di PC kamu — edit kode, lalu push ke GitHub:	
+1. Update kode dari PC (lokal)
 
+```bash
 git add .
-
-git commit -m "tambah fitur baru"
-
+git commit -m "update bot"
 git push origin main
+```
 
-2\. Di terminal Droplet — pull perubahan:
+2. Login ke server (gunakan user deploy, hindari root untuk operasi harian)
 
-cd Bot\_WA
+```bash
+ssh <user_deploy>@<host_server> -p <port_ssh>
+```
 
+3. Pull dan restart bot di server
+
+```bash
+cd /home/<user_deploy>/Bot_WA
 git pull origin main
-
+npm install --omit=dev
 pm2 restart bot-wa
-
-
-
-biar Lebih Mudah — Buat Script Auto Update:
-
-nano update.sh
-
-
-
-Isi dengan:
-
-cd /root/Bot\_WA
-
-git pull origin main
-
-npm install
-
-pm2 restart bot-wa
-
-echo "Bot berhasil diupdate!"
-
-
-
-Simpan CTRL+X → Y → Enter
-
-
-
-Jadikan executable:
-
-chmod +x update.sh
-
-
-
-Kalau mau update bot cukup jalankan:
-
-./update.sh
-
-
-
-Tinggal buka PowerShell lagi di PC kamu dan ketik:
-
-ssh root@152.42.181.24 -p 2222
-
-
-
-
-
-Berikut hal penting yang perlu kamu ketahui:
-
-
-
-🔧 Perintah Penting PM2
-
-pm2 logs bot-wa		:Lihat log bot
-
-pm2 restart bot-wa	:Restart bot
-
-pm2 stop bot-wa		:Stop bot
-
-pm2 status		:Cek status bot
-
-
-
-⚠️ Hal Penting
-
-1\. Jangan sampai Credit Digital Ocean habis
-
-Pantau credit di cloud.digitalocean.com/billing
-
-$200 credit dari GitHub Education Pack
-
-
-
-2\. Jika Bot Tidak Merespon
-
-pm2 restart bot-wa
-
-pm2 logs bot-wa
-
-
-
-3\. Jika QR Code Expired / Logout
-
-cd Bot\_WA
-
-rm -rf .wwebjs\_auth
-
-pm2 restart bot-wa
-
-pm2 logs bot-wa
-
-
-
-🔒 Keamanan
-
-Ganti password root agar server aman:
-
-passwd
-
-
-
-Backup Session WhatsApp
-
-Folder .wwebjs\_auth berisi sesi WhatsApp. Jika terhapus kamu harus scan QR ulang. Jangan dihapus sembarangan!
-
-
-
-&nbsp;Monitor Server
-
-Cek penggunaan RAM \& CPU:
-
-htop
-
-Tekan Q untuk keluar
-
-
-
-Auto Restart Jika Bot Crash
-
-PM2 sudah otomatis restart jika bot crash, tapi pastikan sudah menjalankan:
-
-pm2 startup
-
-pm2 save
-
-
-
-Jika Server Direboot
-
-\# Cek apakah bot jalan
-
 pm2 status
+```
 
-\# Jika tidak jalan
+Script auto update (opsional)
 
-pm2 resurrect
+```bash
+nano update.sh
+```
 
+Isi script:
 
+```bash
+#!/usr/bin/env bash
+set -e
+cd /home/<user_deploy>/Bot_WA
+git pull origin main
+npm install --omit=dev
+pm2 restart bot-wa
+pm2 status
+echo "Bot berhasil diupdate"
+```
 
-💡 Tips Hemat Credit
+Simpan lalu jadikan executable:
 
-Droplet $6/bulan = ~$72/tahun
+```bash
+chmod +x update.sh
+```
 
-Credit $200 cukup untuk ±2.5 tahun ✅
+Jalankan update:
 
-Matikan Droplet jika tidak dipakai untuk hemat credit
+```bash
+./update.sh
+```
 
-📱 Nomor WhatsApp Bot
+Perintah penting PM2
 
-Gunakan nomor cadangan bukan nomor utama
+```bash
+pm2 logs bot-wa            # Lihat log realtime
+pm2 restart bot-wa         # Restart bot
+pm2 stop bot-wa            # Stop bot
+pm2 status                 # Cek status proses
+pm2 save                   # Simpan process list
+```
 
-Karena WhatsApp Web hanya bisa 1 device aktif
+Observability
+
+1. Aktifkan rotasi log PM2
+
+```bash
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+```
+
+2. Cek health dari WhatsApp
+
+Kirim command: `!health`
+
+3. Monitor startup error
+
+Env wajib:
+
+- OPENROUTER_API_KEY
+
+Env opsional (tergantung fitur):
+
+- GEMINI_API_KEY (transkrip voice note)
+- CLIPDROP_API_KEY (remove background/upscale)
+- IMGBB_API_KEY (upload video untuk storyin)
+
+Jika bot tidak merespon
+
+```bash
+pm2 restart bot-wa
+pm2 logs bot-wa --lines 200
+```
+
+Jika sesi WhatsApp expired/logout (langkah aman)
+
+```bash
+cd /home/<user_deploy>/Bot_WA
+cp -r .wwebjs_auth ".wwebjs_auth.backup-$(date +%F-%H%M%S)"
+rm -rf .wwebjs_auth
+pm2 restart bot-wa
+pm2 logs bot-wa --lines 200
+```
+
+Catatan keamanan
+
+- Jangan taruh IP, port, password, token, atau API key di dokumen publik.
+- Gunakan SSH key.
+- Simpan file `.env` hanya di server dan jangan di-commit ke Git.
 

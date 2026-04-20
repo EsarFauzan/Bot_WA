@@ -9,7 +9,8 @@ function createCommandRouter(deps) {
         userModes: deps.userModes,
         stats: deps.stats,
         history: deps.history,
-        buildHelpMenu: deps.buildHelpMenu
+        buildHelpMenu: deps.buildHelpMenu,
+        getHealthStatus: deps.getHealthStatus
     });
 
     const handleReminderJadwalCommands = createReminderJadwalCommandsHandler({

@@ -14,6 +14,33 @@ const { getTimeContextInZone } = require('./src/utils/timeContext');
 const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
 const { createCommandRouter } = require('./src/commands/createCommandRouter');
+const { buildHealthReport, buildHealthLogLine } = require('./src/monitoring/health');
+
+const REQUIRED_ENV = ['OPENROUTER_API_KEY'];
+const OPTIONAL_ENV = {
+    GEMINI_API_KEY: 'transkrip audio/voice',
+    CLIPDROP_API_KEY: 'remove background & upscale image',
+    IMGBB_API_KEY: 'fitur storyin (unggah video)'
+};
+
+function validateEnvironment() {
+    const missingRequired = REQUIRED_ENV.filter((key) => !process.env[key]);
+    if (missingRequired.length) {
+        console.error('❌ Environment wajib belum diisi:', missingRequired.join(', '));
+        console.error('Isi di file .env lalu jalankan ulang bot.');
+        process.exit(1);
+    }
+
+    const missingOptional = Object.entries(OPTIONAL_ENV).filter(([key]) => !process.env[key]);
+    if (missingOptional.length) {
+        console.warn('⚠️ Environment opsional belum diisi:');
+        for (const [key, feature] of missingOptional) {
+            console.warn(`- ${key} (${feature})`);
+        }
+    }
+}
+
+validateEnvironment();
 
 // ============== KONFIGURASI ==============
 const openai = new OpenAI({
@@ -21,10 +48,14 @@ const openai = new OpenAI({
     baseURL: 'https://openrouter.ai/api/v1'
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = process.env.GEMINI_API_KEY
+    ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    : null;
 
 const MODEL_NAME = "arcee-ai/trinity-large-preview:free";
 const VISION_MODEL = "google/gemini-2.0-flash-lite-001";
+const BOT_TIMEZONE = process.env.BOT_TIMEZONE || 'Asia/Makassar';
+const STARTED_AT = new Date();
 
 // ============== VARIASI SALAM ==============
 const SALAM_DB = {
@@ -726,6 +757,44 @@ client.on('qr', qr => {
 });
 
 let schedulersStarted = false;
+let healthMonitorStarted = false;
+
+function getHealthStatus() {
+    return buildHealthReport({
+        startedAt: STARTED_AT,
+        stats,
+        historySize: history.size,
+        cooldownSize: cooldowns.size,
+        groupRemindersSize: groupReminders.size,
+        groupJadwalSize: groupJadwal.size,
+        groupNotesSize: groupNotes.size,
+        userTodosSize: userTodos.size,
+        jadwalUjianSize: jadwalUjian.length,
+        schedulersStarted,
+        healthMonitorStarted,
+        timezone: BOT_TIMEZONE
+    });
+}
+
+function startHealthMonitor() {
+    console.log('🩺 Health monitor aktif (interval 10 menit)');
+    setInterval(() => {
+        console.log(buildHealthLogLine({
+            startedAt: STARTED_AT,
+            stats,
+            historySize: history.size,
+            cooldownSize: cooldowns.size,
+            groupRemindersSize: groupReminders.size,
+            groupJadwalSize: groupJadwal.size,
+            groupNotesSize: groupNotes.size,
+            userTodosSize: userTodos.size,
+            jadwalUjianSize: jadwalUjian.length,
+            schedulersStarted,
+            healthMonitorStarted,
+            timezone: BOT_TIMEZONE
+        }));
+    }, 10 * 60 * 1000);
+}
 
 client.on('ready', () => {
     console.log(`✅ Bot EsarFauzan siap! Model: ${MODEL_NAME}`);
@@ -735,6 +804,10 @@ client.on('ready', () => {
         startPrayerReminder();
         startJadwalReminder();
         schedulersStarted = true;
+    }
+    if (!healthMonitorStarted) {
+        startHealthMonitor();
+        healthMonitorStarted = true;
     }
 });
 
@@ -977,7 +1050,7 @@ client.on('message', async msg => {
         // Handle Audio / Voice Note
         if (isAudio && msg.hasMedia) {
             try {
-                if (!process.env.GEMINI_API_KEY) {
+                if (!genAI) {
                     return msg.reply("API Key Gemini belum diatur untuk transkrip suara 😹");
                 }
                 const media = await msg.downloadMedia();
@@ -1110,6 +1183,7 @@ const handleCommand = createCommandRouter({
     stats,
     history,
     buildHelpMenu,
+    getHealthStatus,
     groupReminders,
     saveReminders,
     groupJadwal,

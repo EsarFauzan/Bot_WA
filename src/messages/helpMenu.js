@@ -89,6 +89,7 @@ Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
 
 ⚙️ *Lainnya*
 !stats → Statistik chat
+!health → Status kesehatan bot
 !reset → Reset riwayat
 !menu → Tampilkan menu ini
 ─────────────────────
