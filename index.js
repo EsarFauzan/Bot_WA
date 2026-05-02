@@ -743,18 +743,29 @@ async function buatStiker(msg) {
             fs.writeFileSync(tmpIn, buffer);
 
             try {
-                // Coba beberapa level kualitas sampai file < 1MB
+                // Coba beberapa level kualitas sampai file < 1.5MB
                 const attempts = [
                     { fps: 30, q: 50, size: 512 },
                     { fps: 30, q: 35, size: 512 },
-                    { fps: 30, q: 20, size: 512 }
+                    { fps: 30, q: 20, size: 512 },
+                    { fps: 20, q: 20, size: 400 }  // Fallback: lower fps & size
                 ];
 
                 for (let a = 0; a < attempts.length; a++) {
                     const { fps, q, size } = attempts[a];
                     
                     await new Promise((resolve, reject) => {
-                        const proc = execFile(ffmpegPath, [
+                        // Use simplified command untuk attempt 4 (fallback)
+                        let args = a === 3 ? [
+                            '-y', '-i', tmpIn,
+                            '-t', '10',
+                            '-vf', `fps=${fps},scale=${size}:${size}:force_original_aspect_ratio=decrease`,
+                            '-c:v', 'libwebp',
+                            '-q:v', String(q),
+                            '-loop', '0',
+                            '-an',
+                            tmpOut
+                        ] : [
                             '-y', '-i', tmpIn,
                             '-t', '10',
                             '-vf', [
@@ -773,7 +784,9 @@ async function buatStiker(msg) {
                             '-an',
                             '-vsync', '0',
                             tmpOut
-                        ], (err, stdout, stderr) => {
+                        ];
+                        
+                        const proc = execFile(ffmpegPath, args, (err, stdout, stderr) => {
                             if (err) {
                                 const errMsg = stderr || err.message;
                                 console.error(`[STIKER] FFmpeg attempt ${a+1} error:`, errMsg.substring(0, 500));
@@ -795,7 +808,7 @@ async function buatStiker(msg) {
                     }
 
                     const fileSize = fs.statSync(tmpOut).size;
-                    console.log(`[STIKER] Attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
+                    console.log(`[STIKER] Attempt ${a+1} (${a === 3 ? 'simplified' : 'normal'}): ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
                     
                     if (fileSize <= 1024 * 1024 * 1.5) break; // < 1.5MB → OK
                     if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
