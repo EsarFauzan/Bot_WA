@@ -700,22 +700,29 @@ async function buatStiker(msg) {
     try {
         // Cek FFmpeg tersedia
         if (!ffmpegAvailable) {
-            console.error('FFmpeg tidak tersedia - tidak bisa convert video');
+            console.error('[STIKER] FFmpeg tidak tersedia');
             throw new Error('FFmpeg tidak ter-install. Hubungi admin untuk setup ffmpeg-static.');
         }
 
+        console.log('[STIKER] Mulai download media...');
         const media = await msg.downloadMedia();
         if (!media) {
-            console.error('Gagal download media dari WhatsApp');
-            throw new Error('Gagal download media dari WhatsApp. Coba lagi ya.');
+            console.error('[STIKER] Download media failed - returned null');
+            throw new Error('Gagal download media dari WhatsApp. Coba lagi.');
         }
 
+        console.log('[STIKER] Media downloaded, processing...');
         const buffer = Buffer.from(media.data, 'base64');
+        if (!buffer || buffer.length === 0) {
+            console.error('[STIKER] Buffer kosong setelah decode');
+            throw new Error('Buffer media kosong. Video mungkin corrupt.');
+        }
+
         const mime = media.mimetype || '';
         const isVideo = msg.type === 'video' || msg.type === 'document' || mime.startsWith('video/');
         const isGif = mime === 'image/gif';
 
-        console.log(`[STIKER] Type: ${msg.type}, Mime: ${mime}, Size: ${Math.round(buffer.length/1024)}KB, Video: ${isVideo}, GIF: ${isGif}`);
+        console.log(`[STIKER] Type: ${msg.type}, Mime: ${mime}, Size: ${Math.round(buffer.length/1024)}KB, IsVideo: ${isVideo}, IsGif: ${isGif}`);
 
         let webpBuffer;
 
@@ -781,6 +788,11 @@ async function buatStiker(msg) {
 
                         proc.on('close', () => clearTimeout(timeout));
                     });
+
+                    // Cek apakah file output berhasil dibuat
+                    if (!fs.existsSync(tmpOut)) {
+                        throw new Error(`FFmpeg attempt ${a+1} tidak menghasilkan output file`);
+                    }
 
                     const fileSize = fs.statSync(tmpOut).size;
                     console.log(`[STIKER] Attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
@@ -1425,15 +1437,17 @@ client.on('message', async msg => {
                 chat.sendStateTyping();
                 const result = await buatStiker(msg);
                 if (result?.error) {
-                    msg.reply(`Gagal buat stiker 😹\nAlasan: ${result.error}`);
+                    const errMsg = String(result.error).substring(0, 150);
+                    msg.reply(`Gagal buat stiker 😹\nAlasan: ${errMsg}`);
                 } else if (result) {
                     await kirimStiker(client, userId, msg, result);
                 } else {
                     msg.reply('Aiih gagal buat stikernya 😹 coba lagi yaa');
                 }
             } catch (e) {
+                const errMsg = String(e.message).substring(0, 150);
                 console.error('Error stiker dokumen:', e.message);
-                msg.reply(`Gagal sy buat stikernya 😹\n${e.message}`);
+                msg.reply(`Gagal sy buat stikernya 😹\n${errMsg}`);
             }
             return;
         }
@@ -1449,15 +1463,17 @@ client.on('message', async msg => {
             chat.sendStateTyping();
             const result = await buatStiker(msg);
             if (result?.error) {
-                msg.reply(`Gagal buat stiker 😹\nAlasan: ${result.error}`);
+                const errMsg = String(result.error).substring(0, 150);
+                msg.reply(`Gagal buat stiker 😹\nAlasan: ${errMsg}`);
             } else if (result) {
                 await kirimStiker(client, userId, msg, result);
             } else {
                 msg.reply('Aiih gagal buat stikernya, Nanti coba lagi ya 😹');
             }
         } catch (e) {
+            const errMsg = String(e.message).substring(0, 150);
             console.error('Error stiker:', e.message);
-            msg.reply(`Gagal sy buat stikernya 😹\n${e.message}`);
+            msg.reply(`Gagal sy buat stikernya 😹\n${errMsg}`);
         }
         return;
     }
