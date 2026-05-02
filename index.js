@@ -58,6 +58,20 @@ const VISION_MODEL = "google/gemini-2.0-flash-lite-001";
 const BOT_TIMEZONE = process.env.BOT_TIMEZONE || 'Asia/Makassar';
 const STARTED_AT = new Date();
 
+// ============== VALIDASI FFMPEG ==============
+let ffmpegAvailable = false;
+if (ffmpegPath) {
+    try {
+        fs.accessSync(ffmpegPath);
+        ffmpegAvailable = true;
+        console.log('✅ FFmpeg ditemukan:', ffmpegPath);
+    } catch (e) {
+        console.warn('⚠️ FFmpeg tidak ditemukan di path:', ffmpegPath);
+    }
+} else {
+    console.warn('⚠️ FFmpeg-static tidak ter-load. Fitur stiker video akan gagal.');
+}
+
 // ============== VARIASI SALAM ==============
 const SALAM_DB = {
     halo: [
@@ -684,13 +698,24 @@ Bahasa utama: Indonesia
 // ============== FUNGSI STIKER ==============
 async function buatStiker(msg) {
     try {
+        // Cek FFmpeg tersedia
+        if (!ffmpegAvailable) {
+            console.error('FFmpeg tidak tersedia - tidak bisa convert video');
+            throw new Error('FFmpeg tidak ter-install. Hubungi admin untuk setup ffmpeg-static.');
+        }
+
         const media = await msg.downloadMedia();
-        if (!media) return null;
+        if (!media) {
+            console.error('Gagal download media dari WhatsApp');
+            throw new Error('Gagal download media dari WhatsApp. Coba lagi ya.');
+        }
 
         const buffer = Buffer.from(media.data, 'base64');
         const mime = media.mimetype || '';
         const isVideo = msg.type === 'video' || msg.type === 'document' || mime.startsWith('video/');
         const isGif = mime === 'image/gif';
+
+        console.log(`[STIKER] Type: ${msg.type}, Mime: ${mime}, Size: ${Math.round(buffer.length/1024)}KB, Video: ${isVideo}, GIF: ${isGif}`);
 
         let webpBuffer;
 
@@ -743,27 +768,29 @@ async function buatStiker(msg) {
                             tmpOut
                         ], (err, stdout, stderr) => {
                             if (err) {
-                                console.error('FFmpeg stiker stderr:', stderr);
-                                reject(new Error(stderr || err.message));
+                                const errMsg = stderr || err.message;
+                                console.error(`[STIKER] FFmpeg attempt ${a+1} error:`, errMsg.substring(0, 500));
+                                reject(new Error(`FFmpeg error: ${errMsg.substring(0, 200)}`));
                             } else resolve();
                         });
 
                         const timeout = setTimeout(() => {
                             proc.kill('SIGKILL');
-                            reject(new Error('FFmpeg stiker timeout 60s'));
+                            reject(new Error('FFmpeg timeout 60s - video terlalu besar atau codec tidak compatible'));
                         }, 60000);
 
                         proc.on('close', () => clearTimeout(timeout));
                     });
 
                     const fileSize = fs.statSync(tmpOut).size;
-                    console.log(`Stiker attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
+                    console.log(`[STIKER] Attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
                     
                     if (fileSize <= 1024 * 1024) break; // < 1MB → OK
                     if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
                 }
 
                 webpBuffer = fs.readFileSync(tmpOut);
+                console.log(`[STIKER] Sukses convert ke WebP: ${Math.round(webpBuffer.length/1024)}KB`);
             } finally {
                 if (fs.existsSync(tmpIn))  fs.unlinkSync(tmpIn);
                 if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
@@ -775,12 +802,14 @@ async function buatStiker(msg) {
                 .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
                 .webp({ quality: 80 })
                 .toBuffer();
+            console.log(`[STIKER] Sukses convert image ke WebP: ${Math.round(webpBuffer.length/1024)}KB`);
         }
 
         return new MessageMedia('image/webp', webpBuffer.toString('base64'), 'stiker.webp');
     } catch (err) {
         console.error('Error buat stiker:', err.message);
-        return null;
+        // Return object dengan error message untuk ditampilkan ke user
+        return { error: err.message };
     }
 }
 
@@ -1394,15 +1423,17 @@ client.on('message', async msg => {
             try {
                 const chat = await msg.getChat();
                 chat.sendStateTyping();
-                const stikerMedia = await buatStiker(msg);
-                if (stikerMedia) {
-                    await kirimStiker(client, userId, msg, stikerMedia);
+                const result = await buatStiker(msg);
+                if (result?.error) {
+                    msg.reply(`Gagal buat stiker 😹\nAlasan: ${result.error}`);
+                } else if (result) {
+                    await kirimStiker(client, userId, msg, result);
                 } else {
                     msg.reply('Aiih gagal buat stikernya 😹 coba lagi yaa');
                 }
             } catch (e) {
                 console.error('Error stiker dokumen:', e.message);
-                msg.reply('Gagal sy buat stikernya 😹');
+                msg.reply(`Gagal sy buat stikernya 😹\n${e.message}`);
             }
             return;
         }
@@ -1416,15 +1447,17 @@ client.on('message', async msg => {
         try {
             const chat = await msg.getChat();
             chat.sendStateTyping();
-            const stikerMedia = await buatStiker(msg);
-            if (stikerMedia) {
-                await kirimStiker(client, userId, msg, stikerMedia);
+            const result = await buatStiker(msg);
+            if (result?.error) {
+                msg.reply(`Gagal buat stiker 😹\nAlasan: ${result.error}`);
+            } else if (result) {
+                await kirimStiker(client, userId, msg, result);
             } else {
                 msg.reply('Aiih gagal buat stikernya, Nanti coba lagi ya 😹');
             }
         } catch (e) {
             console.error('Error stiker:', e.message);
-            msg.reply('Gagal sy buat stikernya 😹');
+            msg.reply(`Gagal sy buat stikernya 😹\n${e.message}`);
         }
         return;
     }
