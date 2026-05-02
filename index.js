@@ -749,7 +749,7 @@ async function buatStiker(msg) {
                     await new Promise((resolve, reject) => {
                         const proc = execFile(ffmpegPath, [
                             '-y', '-i', tmpIn,
-                            '-t', '5',
+                            '-t', '10',
                             '-vf', [
                                 `fps=${fps}`,
                                 `scale=${size}:${size}:force_original_aspect_ratio=decrease`,
@@ -785,7 +785,7 @@ async function buatStiker(msg) {
                     const fileSize = fs.statSync(tmpOut).size;
                     console.log(`[STIKER] Attempt ${a+1}: ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
                     
-                    if (fileSize <= 1024 * 1024) break; // < 1MB → OK
+                    if (fileSize <= 1024 * 1024 * 1.5) break; // < 1.5MB → OK
                     if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
                 }
 
