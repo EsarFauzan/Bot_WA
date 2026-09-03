@@ -42,7 +42,9 @@ function createCommandRouter(deps) {
         downloadTikTokVideo: deps.downloadTikTokVideo,
         downloadYouTubeVideo: deps.downloadYouTubeVideo,
         removeBackground: deps.removeBackground,
-        upscaleImage: deps.upscaleImage
+        upscaleImage: deps.upscaleImage,
+        jobQueue: deps.jobQueue,
+        rateLimiter: deps.rateLimiter
     });
 
     const handleUtilityCommands = createUtilityCommandsHandler({

@@ -13,8 +13,27 @@ function createMediaCommandsHandler(deps) {
         downloadTikTokVideo,
         downloadYouTubeVideo,
         removeBackground,
-        upscaleImage
+        upscaleImage,
+        jobQueue,
+        rateLimiter
     } = deps;
+
+    /**
+     * Jalankan task berat lewat antrean + rate limiter per user.
+     * @param {string} key kunci rate limit (mis. `stiker:${uid}`)
+     * @param {() => Promise<any>} fn fungsi berat (ffmpeg/download/API)
+     * @returns {Promise<{blocked: true, remain: number} | {blocked: false, result: any}>}
+     */
+    async function runHeavy(key, fn) {
+        const remain = rateLimiter.check(key);
+        if (remain > 0) return { blocked: true, remain };
+        rateLimiter.hit(key);
+        return { blocked: false, result: await jobQueue.enqueue(fn) };
+    }
+
+    function heavyBlockedReply(remain) {
+        return `Masih ada proses berat sebelumnya ee, coba lagi dalam ${remain} detik 😹`;
+    }
 
     return async function handleMediaCommands(ctx) {
         const { cmd, msg, uid } = ctx;
@@ -24,8 +43,15 @@ function createMediaCommandsHandler(deps) {
             try {
                 const chat = await msg.getChat();
                 chat.sendStateTyping();
-                const stikerMedia = await buatStiker(msg);
-                if (stikerMedia) {
+                const stikerGate = await runHeavy(`stiker:${uid}`, () => buatStiker(msg));
+                if (stikerGate.blocked) {
+                    await msg.reply(heavyBlockedReply(stikerGate.remain));
+                    return true;
+                }
+                const stikerMedia = stikerGate.result;
+                if (stikerMedia?.error) {
+                    msg.reply(`Gagal sy buat stikernya\n${stikerMedia.error}`);
+                } else if (stikerMedia) {
                     await kirimStiker(client, msg.from, msg, stikerMedia);
                 } else {
                     msg.reply('Aiih gagal nih, coba lagi yaa 😹');
@@ -40,8 +66,15 @@ function createMediaCommandsHandler(deps) {
                 if (quoted.hasMedia) {
                     const chat = await msg.getChat();
                     chat.sendStateTyping();
-                    const stikerMedia = await buatStiker(quoted);
-                    if (stikerMedia) {
+                    const stikerGate = await runHeavy(`stiker:${uid}`, () => buatStiker(quoted));
+                    if (stikerGate.blocked) {
+                        await msg.reply(heavyBlockedReply(stikerGate.remain));
+                        return true;
+                    }
+                    const stikerMedia = stikerGate.result;
+                    if (stikerMedia?.error) {
+                        msg.reply(`Gagal sy buat stikernya\n${stikerMedia.error}`);
+                    } else if (stikerMedia) {
                         await kirimStiker(client, msg.from, msg, stikerMedia);
                     } else {
                         msg.reply('Aiih gagal nih, coba lagi yaa 😹');
@@ -97,31 +130,40 @@ function createMediaCommandsHandler(deps) {
             chat.sendStateTyping();
             await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
-            const media = await targetMsg.downloadMedia();
-            if (!media) {
+            const storyGate = await runHeavy(`storyin:${uid}`, async () => {
+                const media = await targetMsg.downloadMedia();
+                if (!media) return null;
+
+                const os = require('os');
+                const ts = Date.now();
+                const tmpIn = path.join(os.tmpdir(), `sv_in_${ts}.mp4`);
+                const tmpOut = path.join(os.tmpdir(), `sv_out_${ts}.mp4`);
+                fs.writeFileSync(tmpIn, Buffer.from(media.data, 'base64'));
+
+                try {
+                    await optimizeVideo(tmpIn, tmpOut);
+                    return fs.readFileSync(tmpOut);
+                } finally {
+                    if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+                    if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+                }
+            });
+            if (storyGate.blocked) {
+                await msg.reply(heavyBlockedReply(storyGate.remain));
+                return true;
+            }
+
+            const outputBuffer = storyGate.result;
+            if (!outputBuffer) {
                 await msg.reply('Gagal download videonya 😹 coba lagi yaa');
                 return true;
             }
 
-            const os = require('os');
-            const ts = Date.now();
-            const tmpIn = path.join(os.tmpdir(), `sv_in_${ts}.mp4`);
-            const tmpOut = path.join(os.tmpdir(), `sv_out_${ts}.mp4`);
-            fs.writeFileSync(tmpIn, Buffer.from(media.data, 'base64'));
-
-            try {
-                await optimizeVideo(tmpIn, tmpOut);
-                const outputBuffer = fs.readFileSync(tmpOut);
-                const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
-
-                await msg.reply('Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!');
-                await client.sendMessage(uid, optimizedMedia, {
-                    sendMediaAsDocument: false
-                });
-            } finally {
-                if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
-                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-            }
+            const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
+            await msg.reply('Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!');
+            await client.sendMessage(uid, optimizedMedia, {
+                sendMediaAsDocument: false
+            });
         } catch (err) {
             console.error('Error !storyin:', err.message);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
@@ -141,29 +183,39 @@ function createMediaCommandsHandler(deps) {
             chat.sendStateTyping();
             await msg.reply('Oke bentar sy download dulu reelsnya 🤭 sabar yaa...');
 
-            const buffer = await downloadIGVideo(link);
-            if (!buffer) {
+            const igGate = await runHeavy(`ig:${uid}`, async () => {
+                const buffer = await downloadIGVideo(link);
+                if (!buffer) return null;
+
+                const ts = Date.now();
+                const tmpIn = path.join(__dirname, `../../ig_in_${ts}.mp4`);
+                const tmpOut = path.join(__dirname, `../../ig_out_${ts}.mp4`);
+                fs.writeFileSync(tmpIn, buffer);
+
+                try {
+                    await optimizeVideo(tmpIn, tmpOut);
+                    return fs.readFileSync(tmpOut);
+                } finally {
+                    if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+                    if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+                }
+            });
+            if (igGate.blocked) {
+                await msg.reply(heavyBlockedReply(igGate.remain));
+                return true;
+            }
+
+            const igOutput = igGate.result;
+            if (!igOutput) {
                 await msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link bener & publik\n2. Akun IG tidak private\nCoba lagi yaa!');
                 return true;
             }
 
-            const ts = Date.now();
-            const tmpIn = path.join(__dirname, `../../ig_in_${ts}.mp4`);
-            const tmpOut = path.join(__dirname, `../../ig_out_${ts}.mp4`);
-            fs.writeFileSync(tmpIn, buffer);
-
-            try {
-                await optimizeVideo(tmpIn, tmpOut);
-                const outputBuffer = fs.readFileSync(tmpOut);
-                const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'reels.mp4');
-                await client.sendMessage(uid, videoMedia, {
-                    sendMediaAsDocument: false,
-                    caption: 'Nih reelsnya 🤭 kualitas HD!'
-                });
-            } finally {
-                if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
-                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-            }
+            const videoMedia = new MessageMedia('video/mp4', igOutput.toString('base64'), 'reels.mp4');
+            await client.sendMessage(uid, videoMedia, {
+                sendMediaAsDocument: false,
+                caption: 'Nih reelsnya 🤭 kualitas HD!'
+            });
         } catch (err) {
             console.error('Error !ig:', err.message);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
@@ -188,29 +240,39 @@ function createMediaCommandsHandler(deps) {
             chat.sendStateTyping();
             await msg.reply('Oke bentar sy download dulu TikToknya 🤭 sabar yaa...');
 
-            const buffer = await downloadTikTokVideo(link);
-            if (!buffer) {
+            const ttGate = await runHeavy(`tiktok:${uid}`, async () => {
+                const buffer = await downloadTikTokVideo(link);
+                if (!buffer) return null;
+
+                const ts = Date.now();
+                const tmpIn = path.join(__dirname, `../../tt_in_${ts}.mp4`);
+                const tmpOut = path.join(__dirname, `../../tt_out_${ts}.mp4`);
+                fs.writeFileSync(tmpIn, buffer);
+
+                try {
+                    await optimizeVideo(tmpIn, tmpOut);
+                    return fs.readFileSync(tmpOut);
+                } finally {
+                    if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
+                    if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
+                }
+            });
+            if (ttGate.blocked) {
+                await msg.reply(heavyBlockedReply(ttGate.remain));
+                return true;
+            }
+
+            const ttOutput = ttGate.result;
+            if (!ttOutput) {
                 await msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link harus publik\n2. Bukan live\nCoba lagi yaa!');
                 return true;
             }
 
-            const ts = Date.now();
-            const tmpIn = path.join(__dirname, `../../tt_in_${ts}.mp4`);
-            const tmpOut = path.join(__dirname, `../../tt_out_${ts}.mp4`);
-            fs.writeFileSync(tmpIn, buffer);
-
-            try {
-                await optimizeVideo(tmpIn, tmpOut);
-                const outputBuffer = fs.readFileSync(tmpOut);
-                const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'tiktok.mp4');
-                await msg.reply('Nih videonya 🤭 kualitas HD!');
-                await client.sendMessage(uid, videoMedia, {
-                    sendMediaAsDocument: false
-                });
-            } finally {
-                if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
-                if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
-            }
+            const videoMedia = new MessageMedia('video/mp4', ttOutput.toString('base64'), 'tiktok.mp4');
+            await msg.reply('Nih videonya 🤭 kualitas HD!');
+            await client.sendMessage(uid, videoMedia, {
+                sendMediaAsDocument: false
+            });
         } catch (err) {
             console.error('Error !tiktok:', err.message);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
@@ -245,19 +307,14 @@ function createMediaCommandsHandler(deps) {
             chat.sendStateTyping();
             await msg.reply(`Oke bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'} 🤭 sabar yaa...`);
 
-            const buffer = await downloadYouTubeVideo(link, audioOnly);
-            if (!buffer) {
-                await msg.reply('Aiih gagal download sy 😹\nCek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi yaa!');
-                return true;
-            }
+            const ytGate = await runHeavy(`yt:${uid}`, async () => {
+                const buffer = await downloadYouTubeVideo(link, audioOnly);
+                if (!buffer) return null;
 
-            if (audioOnly) {
-                const audioMedia = new MessageMedia('audio/mpeg', buffer.toString('base64'), 'audio.mp3');
-                await client.sendMessage(uid, audioMedia, {
-                    sendMediaAsDocument: true,
-                    caption: 'Nih MP3nya 🎵'
-                });
-            } else {
+                if (audioOnly) {
+                    return { audio: true, buffer };
+                }
+
                 const ts = Date.now();
                 const tmpIn = path.join(__dirname, `../../yt_in_${ts}.mp4`);
                 const tmpOut = path.join(__dirname, `../../yt_out_${ts}.mp4`);
@@ -265,17 +322,35 @@ function createMediaCommandsHandler(deps) {
 
                 try {
                     await optimizeVideo(tmpIn, tmpOut);
-                    const outputBuffer = fs.readFileSync(tmpOut);
-                    const videoMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'youtube.mp4');
-
-                    await msg.reply('Nih videonya 🤭 kualitas HD!');
-                    await client.sendMessage(uid, videoMedia, {
-                        sendMediaAsDocument: false
-                    });
+                    return { audio: false, buffer: fs.readFileSync(tmpOut) };
                 } finally {
                     if (fs.existsSync(tmpIn)) fs.unlinkSync(tmpIn);
                     if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut);
                 }
+            });
+            if (ytGate.blocked) {
+                await msg.reply(heavyBlockedReply(ytGate.remain));
+                return true;
+            }
+
+            const ytResult = ytGate.result;
+            if (!ytResult) {
+                await msg.reply('Aiih gagal download sy 😹\nCek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi yaa!');
+                return true;
+            }
+
+            if (ytResult.audio) {
+                const audioMedia = new MessageMedia('audio/mpeg', ytResult.buffer.toString('base64'), 'audio.mp3');
+                await client.sendMessage(uid, audioMedia, {
+                    sendMediaAsDocument: true,
+                    caption: 'Nih MP3nya 🎵'
+                });
+            } else {
+                const videoMedia = new MessageMedia('video/mp4', ytResult.buffer.toString('base64'), 'youtube.mp4');
+                await msg.reply('Nih videonya 🤭 kualitas HD!');
+                await client.sendMessage(uid, videoMedia, {
+                    sendMediaAsDocument: false
+                });
             }
         } catch (err) {
             console.error('Error !yt:', err.message);
@@ -337,7 +412,12 @@ function createMediaCommandsHandler(deps) {
                 .png()
                 .toBuffer();
 
-            const resultBuffer = await removeBackground(pngInput);
+            const rmbgGate = await runHeavy(`rmbg:${uid}`, () => removeBackground(pngInput));
+            if (rmbgGate.blocked) {
+                await msg.reply(heavyBlockedReply(rmbgGate.remain));
+                return true;
+            }
+            const resultBuffer = rmbgGate.result;
             const webpBuffer = await sharp(resultBuffer)
                 .ensureAlpha()
                 .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
@@ -411,7 +491,12 @@ function createMediaCommandsHandler(deps) {
 
             const imageBuffer = Buffer.from(media.data, 'base64');
             const pngBuffer = await sharp(imageBuffer).png().toBuffer();
-            const resultBuffer = await upscaleImage(pngBuffer);
+            const upscaleGate = await runHeavy(`upscale:${uid}`, () => upscaleImage(pngBuffer));
+            if (upscaleGate.blocked) {
+                await msg.reply(heavyBlockedReply(upscaleGate.remain));
+                return true;
+            }
+            const resultBuffer = upscaleGate.result;
 
             const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
             await msg.reply('Nih fotonya 🔍 kualitas udah ditingkatkan, rasio tetap sama!');

@@ -1,7 +1,6 @@
 require('dotenv').config();
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -9,17 +8,19 @@ const { execFile } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const axios = require('axios');
 const schedule = require('node-schedule');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const dataStore = require('./src/storage/dataStore');
 const { getTimeContextInZone } = require('./src/utils/timeContext');
-const { loadLearningData, saveLearningData } = require('./src/storage/learningDataStore');
+const { createJobQueue, createRateLimiter } = require('./src/utils/jobQueue');
+const { JADWAL_KULIAH, NAMA_HARI, saveKuliahSchedule } = require('./src/storage/jadwalKuliahStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
 const { createCommandRouter } = require('./src/commands/createCommandRouter');
-const { buildZikirMessageByType, buildRandomZikirMessage } = require('./src/commands/utilityCommands');
 const { buildHealthReport, buildHealthLogLine } = require('./src/monitoring/health');
+const { startPrayerReminder } = require('./src/schedulers/prayerScheduler');
+const { startJadwalReminder } = require('./src/schedulers/jadwalScheduler');
+const { startZikirAutoReminder } = require('./src/schedulers/zikirScheduler');
 
-const REQUIRED_ENV = ['OPENROUTER_API_KEY'];
+const REQUIRED_ENV = [];
 const OPTIONAL_ENV = {
-    GEMINI_API_KEY: 'transkrip audio/voice',
     CLIPDROP_API_KEY: 'remove background & upscale image',
     IMGBB_API_KEY: 'fitur storyin (unggah video)'
 };
@@ -44,18 +45,8 @@ function validateEnvironment() {
 validateEnvironment();
 
 // ============== KONFIGURASI ==============
-const openai = new OpenAI({
-    apiKey: process.env.OPENROUTER_API_KEY,
-    baseURL: 'https://openrouter.ai/api/v1'
-});
-
-const genAI = process.env.GEMINI_API_KEY
-    ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    : null;
-
-const MODEL_NAME = "arcee-ai/trinity-large-preview:free";
-const VISION_MODEL = "google/gemini-2.0-flash-lite-001";
 const BOT_TIMEZONE = process.env.BOT_TIMEZONE || 'Asia/Makassar';
+const BOT_MODE = 'command-only';
 const STARTED_AT = new Date();
 
 // ============== VALIDASI FFMPEG ==============
@@ -72,628 +63,54 @@ if (ffmpegPath) {
     console.warn('⚠️ FFmpeg-static tidak ter-load. Fitur stiker video akan gagal.');
 }
 
-// ============== VARIASI SALAM ==============
-const SALAM_DB = {
-    halo: [
-        "Halo, sy siap bantu. Mau urus apa dulu?",
-        "Hai, ada yang bisa sy bantu sekarang?",
-        "Halo, siap. Kasih konteksnya sedikit biar sy bantu cepat.",
-        "Hai, semoga harimu lancar. Mau bahas apa?"
-    ],
-    hai: [
-        "Hai juga, sy on. Ada keperluan apa?",
-        "Hai, oke. Mau sy bantu apa?",
-        "Hai, kasih detail dikit ya biar tepat.",
-        "Hai, lanjut. Lagi butuh info apa?"
-    ],
-    p: [
-        "Iya, sy di sini. Ada apa?",
-        "Siap, lanjut. Butuh bantuan apa?",
-        "Oke, kasih detailnya ya.",
-        "Hadir. Mau sy kerjakan apa dulu?"
-    ],
-    assalamualaikum: [
-        "Waalaikumsalam warahmatullahi wabarakatuh. Sy siap bantu 🙏",
-        "Waalaikumsalam. Ada yang ingin dibantu?",
-        "Waalaikumsalam. Semoga harimu lancar, mari kita lanjut."
-    ],
-    oi: [
-        "Iya, ada apa?",
-        "Siap, lanjutkan.",
-        "Oke, jelaskan yang dibutuhkan ya."
-    ],
-    woi: [
-        "Iya, sy denger. Ada apa?",
-        "Oke, sy siap bantu.",
-        "Siap, kasih konteks singkatnya."
-    ],
-    hey: [
-        "Hey, sy siap. Mau dibantu apa?",
-        "Hey, lanjut. Ada tugas apa sekarang?",
-        "Hey, oke. Kasih detailnya ya."
-    ]
-};
+// ============== ANTREAN TASK BERAT ==============
+// Dipakai mediaCommands (stiker, storyin, download, clipdrop) agar tidak
+// membebani CPU/RAM VPS secara bersamaan.
+const HEAVY_COOLDOWN_MS = 20000; // jeda antar task berat per user per command
+const mediaJobQueue = createJobQueue({ concurrency: 1 });
+const mediaRateLimiter = createRateLimiter(HEAVY_COOLDOWN_MS);
 
-// ============== MOOD DETECTION ==============
-function detectMood(msg) {
-    const m = msg.toLowerCase();
-    if (m.match(/sedih|galau|nangis|patah hati|putus|gagal|kecewa|down|stress|depresi|capek banget|lelah|menyerah|hopeless|susah|berat/)) return "sedih";
-    if (m.match(/kesel|bete|sebel|emosi|marah|benci|muak|jengkel/)) return "kesal";
-    if (m.match(/seneng|bahagia|excited|yeay|hore|asik|mantap|keren|amazing|wow/)) return "senang";
-    if (m.match(/wkwk|haha|hihi|lol|😂|🤣|😹|lucu|ngakak|garing|receh/)) return "bercanda";
-    if (m.match(/sayang|cinta|kangen|love|miss you|peluk|kiss|bucin|mesra|rindu/)) return "flirty";
-    if (m.match(/singkat|dingin|hmm|oh|ok$|oke$|ya$|iya$/)) return "dingin";
-    return "netral";
+// ============== DATA (via dataStore) ==============
+// Semua state dipersist atomic oleh dataStore. Handler command memanggil
+// save* (wrapper persist per domain) setelah mutasi map/array di atas.
+const groupReminders = dataStore.reminders;
+const groupJadwal = dataStore.jadwal;
+const groupJadwalInsights = dataStore.jadwalInsight;
+const sholatModes = dataStore.sholatMode;
+const zikirAutoTargets = dataStore.zikirAuto;
+const groupNotes = dataStore.notes;
+const userTodos = dataStore.todo;
+const jadwalUjian = dataStore.ujian;
+const LINK_AKADEMIK = dataStore.akademik;
+const jadwalInsightState = dataStore.jadwalInsightState;
+const zikirAutoState = dataStore.zikirAutoState;
+
+// Statistik chat (learning). Jaga bentuk agar kompatibel dengan format lama.
+if (!dataStore.learning.stats) dataStore.learning.stats = { totalChats: 0, lastActive: null };
+if (!Array.isArray(dataStore.learning.expressions)) dataStore.learning.expressions = [];
+const stats = dataStore.learning.stats;
+
+const saveReminders = () => dataStore.persist('reminders');
+const saveJadwalGroups = () => dataStore.persist('jadwal');
+const saveJadwalInsightGroups = () => dataStore.persist('jadwalInsight');
+const saveSholatModes = () => dataStore.persist('sholatMode');
+const saveZikirAutoTargets = () => dataStore.persist('zikirAuto');
+const saveNotes = () => dataStore.persist('notes');
+const saveTodos = () => dataStore.persist('todo');
+const saveUjian = () => dataStore.persist('ujian');
+const saveAkademik = () => dataStore.persist('akademik');
+
+function recordCommandActivity() {
+    dataStore.learning.stats.totalChats++;
+    dataStore.learning.stats.lastActive = new Date().toISOString();
+    dataStore.persist('learning');
 }
-
-// ============== DATA PERSISTENCE ==============
-const LEARNING_FILE   = path.join(__dirname, 'learned_data.json');
-const CHAT_LOG_FILE   = path.join(__dirname, 'chat_logs.json');
-const REMINDER_FILE   = path.join(__dirname, 'reminders.json');
-const JADWAL_FILE     = path.join(__dirname, 'jadwal_groups.json');
-const JADWAL_KULIAH_FILE = path.join(__dirname, 'jadwal_kuliah.json');
-const SHOLAT_MODE_FILE = path.join(__dirname, 'sholat_modes.json');
-const JADWAL_INSIGHT_GROUP_FILE = path.join(__dirname, 'jadwal_insight_groups.json');
-const JADWAL_INSIGHT_STATE_FILE = path.join(__dirname, 'jadwal_insight_state.json');
-const ZIKIR_AUTO_FILE = path.join(__dirname, 'zikir_auto_targets.json');
-const ZIKIR_STATE_FILE = path.join(__dirname, 'zikir_auto_state.json');
-const NOTES_FILE      = path.join(__dirname, 'notes.json');
-const UJIAN_FILE      = path.join(__dirname, 'ujian.json');
-const TODO_FILE       = path.join(__dirname, 'todos.json');
-let stats = { totalChats: 0, lastActive: null };
-let learningExpressions = [];
-
-// groupId → { kota, kotaId, lokasi }
-let groupReminders = new Map();
-// Cache jadwal: `${kotaId}_${YYYY-MM-DD}` → jadwal object
-const prayerCache = new Map();
-// groupId → true (grup yang aktifkan reminder jadwal kuliah)
-let groupJadwal = new Map();
-// groupId -> boolean (true=insight on, false=insight off)
-let groupJadwalInsights = new Map();
-// chatId/groupId -> 'puasa' | 'normal'
-let sholatModes = new Map();
-// chatId/groupId -> true (chat yang aktifkan auto zikir)
-let zikirAutoTargets = new Map();
-// groupId → [ { id, isi, by, ts } ]
-let groupNotes = new Map();
-// userId/groupId → [ { task: string, done: boolean } ]
-let userTodos = new Map();
-// [ { nama, tanggal (YYYY-MM-DD), matkul } ]
-let jadwalUjian = [];
-let jadwalInsightState = {
-    tglKey: '',
-    sentKeys: []
-};
-let zikirAutoState = {
-    tglKey: '',
-    sentKeys: []
-};
-
-// ============== LINK AKADEMIK ==============
-const AKADEMIK_FILE = path.join(__dirname, 'akademik.json');
-let LINK_AKADEMIK = [
-    { id: 1, nama: 'SIAKAD',       label: 'Sistem Informasi Akademik Untad', url: 'https://siakad.untad.ac.id' },
-    { id: 2, nama: 'E-Learning',   label: 'E-Learning Untad',                url: 'https://elearning.untad.ac.id' },
-    { id: 3, nama: 'Email Kampus', label: 'Email Kampus Untad',              url: 'https://mail.google.com' },
-    { id: 4, nama: 'Portal',       label: 'Portal Mahasiswa Untad',          url: 'https://portal.untad.ac.id' },
-];
-
-function loadAkademik() {
-    try {
-        if (fs.existsSync(AKADEMIK_FILE)) {
-            LINK_AKADEMIK = JSON.parse(fs.readFileSync(AKADEMIK_FILE, 'utf8'));
-        }
-    } catch (e) {}
-}
-
-function saveAkademik() {
-    try {
-        fs.writeFileSync(AKADEMIK_FILE, JSON.stringify(LINK_AKADEMIK, null, 2));
-    } catch (e) {}
-}
-
-function loadReminders() {
-    try {
-        if (fs.existsSync(REMINDER_FILE)) {
-            const data = JSON.parse(fs.readFileSync(REMINDER_FILE, 'utf8'));
-            groupReminders = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveReminders() {
-    try {
-        const obj = Object.fromEntries(groupReminders);
-        fs.writeFileSync(REMINDER_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadJadwalGroups() {
-    try {
-        if (fs.existsSync(JADWAL_FILE)) {
-            const data = JSON.parse(fs.readFileSync(JADWAL_FILE, 'utf8'));
-            groupJadwal = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveJadwalGroups() {
-    try {
-        const obj = Object.fromEntries(groupJadwal);
-        fs.writeFileSync(JADWAL_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadJadwalInsightGroups() {
-    try {
-        if (fs.existsSync(JADWAL_INSIGHT_GROUP_FILE)) {
-            const data = JSON.parse(fs.readFileSync(JADWAL_INSIGHT_GROUP_FILE, 'utf8'));
-            groupJadwalInsights = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveJadwalInsightGroups() {
-    try {
-        const obj = Object.fromEntries(groupJadwalInsights);
-        fs.writeFileSync(JADWAL_INSIGHT_GROUP_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadSholatModes() {
-    try {
-        if (fs.existsSync(SHOLAT_MODE_FILE)) {
-            const data = JSON.parse(fs.readFileSync(SHOLAT_MODE_FILE, 'utf8'));
-            sholatModes = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveSholatModes() {
-    try {
-        const obj = Object.fromEntries(sholatModes);
-        fs.writeFileSync(SHOLAT_MODE_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadJadwalInsightState() {
-    try {
-        if (!fs.existsSync(JADWAL_INSIGHT_STATE_FILE)) return;
-        const data = JSON.parse(fs.readFileSync(JADWAL_INSIGHT_STATE_FILE, 'utf8'));
-        if (!data || typeof data !== 'object') return;
-        if (typeof data.tglKey !== 'string') return;
-        if (!Array.isArray(data.sentKeys)) return;
-
-        jadwalInsightState = {
-            tglKey: data.tglKey,
-            sentKeys: data.sentKeys
-        };
-    } catch (e) {}
-}
-
-function saveJadwalInsightState() {
-    try {
-        fs.writeFileSync(JADWAL_INSIGHT_STATE_FILE, JSON.stringify(jadwalInsightState, null, 2));
-    } catch (e) {}
-}
-
-function loadZikirAutoTargets() {
-    try {
-        if (fs.existsSync(ZIKIR_AUTO_FILE)) {
-            const data = JSON.parse(fs.readFileSync(ZIKIR_AUTO_FILE, 'utf8'));
-            zikirAutoTargets = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveZikirAutoTargets() {
-    try {
-        const obj = Object.fromEntries(zikirAutoTargets);
-        fs.writeFileSync(ZIKIR_AUTO_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadZikirAutoState() {
-    try {
-        if (!fs.existsSync(ZIKIR_STATE_FILE)) return;
-        const data = JSON.parse(fs.readFileSync(ZIKIR_STATE_FILE, 'utf8'));
-        if (!data || typeof data !== 'object') return;
-        if (typeof data.tglKey !== 'string') return;
-        if (!Array.isArray(data.sentKeys)) return;
-
-        zikirAutoState = {
-            tglKey: data.tglKey,
-            sentKeys: data.sentKeys
-        };
-    } catch (e) {}
-}
-
-function saveZikirAutoState() {
-    try {
-        fs.writeFileSync(ZIKIR_STATE_FILE, JSON.stringify(zikirAutoState, null, 2));
-    } catch (e) {}
-}
-
-function loadNotes() {
-    try {
-        if (fs.existsSync(NOTES_FILE)) {
-            const data = JSON.parse(fs.readFileSync(NOTES_FILE, 'utf8'));
-            groupNotes = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveNotes() {
-    try {
-        const obj = Object.fromEntries(groupNotes);
-        fs.writeFileSync(NOTES_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadTodos() {
-    try {
-        if (fs.existsSync(TODO_FILE)) {
-            const data = JSON.parse(fs.readFileSync(TODO_FILE, 'utf8'));
-            userTodos = new Map(Object.entries(data));
-        }
-    } catch (e) {}
-}
-
-function saveTodos() {
-    try {
-        const obj = Object.fromEntries(userTodos);
-        fs.writeFileSync(TODO_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
-}
-
-function loadUjian() {
-    try {
-        if (fs.existsSync(UJIAN_FILE)) {
-            jadwalUjian = JSON.parse(fs.readFileSync(UJIAN_FILE, 'utf8'));
-        }
-    } catch (e) {}
-}
-
-function saveUjian() {
-    try {
-        fs.writeFileSync(UJIAN_FILE, JSON.stringify(jadwalUjian, null, 2));
-    } catch (e) {}
-}
-
-// ============== JADWAL KULIAH ==============
-// Hari: 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
-const DEFAULT_JADWAL_KULIAH = [
-    { hari: 1, mulai: '09:10', selesai: '10:50', matkul: 'Jaringan Komputer',           reminder: '08:10' },
-    { hari: 1, mulai: '12:40', selesai: '16:00', matkul: 'Sistem Operasi',               reminder: '11:40' },
-    { hari: 2, mulai: '07:30', selesai: '09:10', matkul: 'Keamanan Siber',               reminder: '06:30' },
-    { hari: 2, mulai: '14:20', selesai: '18:00', matkul: 'Keamanan Sistem Komputer',     reminder: '13:20' },
-    { hari: 3, mulai: '12:30', selesai: '15:00', matkul: 'Pengembangan Aplikasi WEB',    reminder: '11:30' },
-    { hari: 4, mulai: '10:55', selesai: '12:30', matkul: 'Pemodelan dan Simulasi',       reminder: '09:55' },
-    { hari: 4, mulai: '14:20', selesai: '18:00', matkul: 'Pengembangan Aplikasi Bergerak', reminder: '13:20' },
-];
-let JADWAL_KULIAH = DEFAULT_JADWAL_KULIAH.map((item) => ({ ...item }));
-
-const NAMA_HARI = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-
-function buildReminderTimeFromStart(mulai) {
-    const match = String(mulai).match(/^(\d{2}):(\d{2})$/);
-    if (!match) return '';
-    const jam = Number(match[1]);
-    const menit = Number(match[2]);
-    const total = ((jam * 60 + menit) - 60 + 1440) % 1440;
-    const outJam = String(Math.floor(total / 60)).padStart(2, '0');
-    const outMenit = String(total % 60).padStart(2, '0');
-    return `${outJam}:${outMenit}`;
-}
-
-function sortKuliahSchedule() {
-    JADWAL_KULIAH.sort((a, b) => {
-        if (a.hari !== b.hari) return a.hari - b.hari;
-        return a.mulai.localeCompare(b.mulai);
-    });
-}
-
-function normalizeKuliahSchedule(rawData) {
-    if (!Array.isArray(rawData)) return [];
-
-    const valid = [];
-    for (const item of rawData) {
-        if (!item || typeof item !== 'object') continue;
-        const hari = Number(item.hari);
-        const mulai = String(item.mulai || '').trim();
-        const selesai = String(item.selesai || '').trim();
-        const matkul = String(item.matkul || '').trim();
-        const isTime = /^([01]\d|2[0-3]):[0-5]\d$/;
-
-        if (!Number.isInteger(hari) || hari < 0 || hari > 6) continue;
-        if (!isTime.test(mulai) || !isTime.test(selesai)) continue;
-        if (!matkul) continue;
-
-        valid.push({
-            hari,
-            mulai,
-            selesai,
-            reminder: buildReminderTimeFromStart(mulai),
-            matkul
-        });
-    }
-
-    return valid;
-}
-
-function loadKuliahSchedule() {
-    try {
-        if (fs.existsSync(JADWAL_KULIAH_FILE)) {
-            const parsed = JSON.parse(fs.readFileSync(JADWAL_KULIAH_FILE, 'utf8'));
-            const normalized = normalizeKuliahSchedule(parsed);
-            if (normalized.length > 0) {
-                JADWAL_KULIAH = normalized;
-                sortKuliahSchedule();
-                return;
-            }
-        }
-
-        JADWAL_KULIAH = DEFAULT_JADWAL_KULIAH.map((item) => ({ ...item }));
-        sortKuliahSchedule();
-        fs.writeFileSync(JADWAL_KULIAH_FILE, JSON.stringify(JADWAL_KULIAH, null, 2));
-    } catch (e) {}
-}
-
-function saveKuliahSchedule() {
-    try {
-        sortKuliahSchedule();
-        fs.writeFileSync(JADWAL_KULIAH_FILE, JSON.stringify(JADWAL_KULIAH, null, 2));
-    } catch (e) {}
-}
-
-function ensureJadwalInsightStateForDate(tglKey) {
-    if (jadwalInsightState.tglKey === tglKey && Array.isArray(jadwalInsightState.sentKeys)) {
-        return;
-    }
-
-    jadwalInsightState = {
-        tglKey,
-        sentKeys: []
-    };
-    saveJadwalInsightState();
-}
-
-const FALLBACK_IT_QUOTES = [
-    '"Code is like humor. When you have to explain it, it\'s bad." — Cory House',
-    '"Programs must be written for people to read." — Harold Abelson',
-    '"Simplicity is the soul of efficiency." — Austin Freeman',
-    '"First, solve the problem. Then, write the code." — John Johnson'
-];
-
-const FALLBACK_IT_FACTS = [
-    'Git dipakai di jutaan repo dan jadi fondasi kolaborasi software modern.',
-    'Sebagian besar insiden keamanan berawal dari salah konfigurasi, bukan nol-day exploit.',
-    'Observability (logs, metrics, traces) sering jadi pembeda utama antara cepat pulih dan downtime panjang.'
-];
-
-function pickRandom(items) {
-    if (!Array.isArray(items) || items.length === 0) return '';
-    return items[Math.floor(Math.random() * items.length)];
-}
-
-async function buildITQuoteMessage() {
-    const fallbackQuote = pickRandom(FALLBACK_IT_QUOTES);
-
-    try {
-        const res = await openai.chat.completions.create({
-            model: MODEL_NAME,
-            messages: [
-                {
-                    role: 'system',
-                    content: 'Kamu membuat 1 quotes inspiratif seputar IT untuk WhatsApp dalam bahasa Indonesia. Ringkas, kuat, dan tidak alay.'
-                },
-                {
-                    role: 'user',
-                    content: 'Buat 1 quotes IT terbaru gaya profesional. Format wajib: "..." — Nama. Maksimal 22 kata.'
-                }
-            ],
-            temperature: 0.9,
-            max_tokens: 80
-        });
-
-        const quote = (res.choices?.[0]?.message?.content || '').trim();
-        if (quote) {
-            return `✨ *QUOTES IT HARI INI*\n${quote}`;
-        }
-    } catch (err) {
-        console.error('Error generate IT quote:', err.message);
-    }
-
-    return `✨ *QUOTES IT HARI INI*\n${fallbackQuote}`;
-}
-
-async function buildLatestITFactMessage() {
-    try {
-        const topRes = await axios.get('https://hacker-news.firebaseio.com/v0/topstories.json', { timeout: 12000 });
-        const ids = Array.isArray(topRes.data) ? topRes.data.slice(0, 20) : [];
-        if (ids.length === 0) throw new Error('No top stories');
-
-        const storyResults = await Promise.all(ids.map(async (id) => {
-            try {
-                const itemRes = await axios.get(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { timeout: 12000 });
-                return itemRes.data;
-            } catch (e) {
-                return null;
-            }
-        }));
-
-        const stories = storyResults
-            .filter((item) => item && item.type === 'story' && item.title)
-            .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-        if (stories.length === 0) throw new Error('No story details');
-
-        const candidates = stories.slice(0, Math.min(7, stories.length));
-        const chosen = pickRandom(candidates);
-        const link = chosen.url || `https://news.ycombinator.com/item?id=${chosen.id}`;
-        const waktu = chosen.time
-            ? new Date(chosen.time * 1000).toLocaleString('id-ID', { timeZone: BOT_TIMEZONE, hour12: false })
-            : '-';
-
-        return `💡 *FAKTA IT TERKINI*\n📰 ${chosen.title}\n⭐ Skor komunitas: ${chosen.score || 0} | 💬 Komentar: ${chosen.descendants || 0}\n🕒 Update: ${waktu}\n🔗 ${link}\n\n_Penting karena ini topik yang sedang hangat dibahas komunitas teknologi global._`;
-    } catch (err) {
-        console.error('Error fetch IT fact:', err.message);
-        return `💡 *FAKTA IT TERKINI*\n${pickRandom(FALLBACK_IT_FACTS)}\n\n_Poin ini penting dan sering jadi faktor penentu kualitas sistem IT._`;
-    }
-}
-
-function ensureZikirStateForDate(tglKey) {
-    if (zikirAutoState.tglKey === tglKey && Array.isArray(zikirAutoState.sentKeys)) {
-        return;
-    }
-
-    zikirAutoState = {
-        tglKey,
-        sentKeys: []
-    };
-    saveZikirAutoState();
-}
-
-function addMinutesToTime(hhmm, offset) {
-    const match = String(hhmm || '').match(/^(\d{2}):(\d{2})$/);
-    if (!match) return null;
-    const total = (Number(match[1]) * 60) + Number(match[2]);
-    const shifted = (total + offset + (24 * 60)) % (24 * 60);
-    const outH = String(Math.floor(shifted / 60)).padStart(2, '0');
-    const outM = String(shifted % 60).padStart(2, '0');
-    return `${outH}:${outM}`;
-}
-
-function loadStats() {
-    try {
-        const learningData = loadLearningData(LEARNING_FILE);
-        stats = learningData.stats;
-        learningExpressions = learningData.expressions;
-    } catch (e) { /* baru mulai */ }
-}
-
-function saveStats() {
-    try {
-        saveLearningData(LEARNING_FILE, {
-            stats,
-            expressions: learningExpressions
-        });
-    } catch (e) {}
-}
-
-function logChat(userId, userMsg, botReply) {
-    try {
-        let logs = [];
-        if (fs.existsSync(CHAT_LOG_FILE)) logs = JSON.parse(fs.readFileSync(CHAT_LOG_FILE, 'utf8'));
-        logs.push({ ts: new Date().toISOString(), uid: userId.substring(0, 10), user: userMsg, bot: botReply });
-        if (logs.length > 500) logs = logs.slice(-500);
-        fs.writeFileSync(CHAT_LOG_FILE, JSON.stringify(logs, null, 2));
-        stats.totalChats++;
-        stats.lastActive = new Date().toISOString();
-        saveStats();
-    } catch (e) {}
-}
-
-loadStats();
-loadReminders();
-loadJadwalGroups();
-loadJadwalInsightGroups();
-loadSholatModes();
-loadJadwalInsightState();
-loadZikirAutoTargets();
-loadZikirAutoState();
-loadKuliahSchedule();
-loadNotes();
-loadTodos();
-loadUjian();
-loadAkademik();
 
 // ============== CONVERSATION & RATE LIMIT ==============
 const history = new Map();
-const MAX_HISTORY = 20;
 const cooldowns = new Map();
 const COOLDOWN = 2000;
 const userModes = new Map();
-
-const delay = (min, max) => new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1)) + min));
-
-// ============== SALAM CHECKER ==============
-function checkSalam(message) {
-    const msg = message.toLowerCase().trim();
-    if (msg.includes('assalamualaikum') || msg.includes('assalamu'))
-        return SALAM_DB.assalamualaikum[Math.floor(Math.random() * SALAM_DB.assalamualaikum.length)];
-    for (const [key, arr] of Object.entries(SALAM_DB)) {
-        if (msg === key || msg === key + '!' || msg === key + '.')
-            return arr[Math.floor(Math.random() * arr.length)];
-    }
-    return null;
-}
-
-// ============== SYSTEM PROMPT ==============
-function buildPrompt(userId, userMessage) {
-    const mode = userModes.get(userId) || "normal";
-    const mood = detectMood(userMessage);
-
-    let prompt = `Kamu adalah asisten pribadi pintar milik Esar Fauzan di WhatsApp.
-
-═══ IDENTITAS ═══
-Nama peran: Asisten Esar
-Pemilik: Esar Fauzan
-Bahasa utama: Indonesia
-
-═══ PRINSIP UTAMA ═══
-1) Utamakan membantu user dengan solusi yang jelas dan relevan.
-2) Pahami konteks chat sebelum menjawab.
-3) Jika ragu, jujur bilang belum yakin dan sarankan verifikasi.
-4) Beri jawaban ringkas, padat, dan praktis.
-5) Jika diminta detail, jelaskan bertahap dan mudah dipraktikkan.
-6) Jika ditanya identitas, jawab: "Saya asisten pribadi pintar milik Esar Fauzan."
-
-═══ GAYA BAHASA ═══
-- Hangat, natural, dan cerdas (bukan kaku seperti customer service).
-- Boleh pakai dialek ringan (sy, ko, jo) secukupnya.
-- Emoji maksimal 1-2 per pesan.
-
-═══ STRUKTUR BALASAN ═══
-1) Reaksi singkat sesuai konteks
-2) Inti jawaban atau langkah solusi
-3) Pertanyaan lanjutan kecil jika dibutuhkan
-
-═══ ATURAN WAJIB ═══
-- Jawab sesuai pertanyaan user, jangan melenceng.
-- Maksimal 1-4 kalimat kecuali user minta detail.
-- Tetap sopan, suportif, dan tidak menghakimi.
-- Jangan toxic, menghina, SARA, atau merendahkan.
-- Jangan mengarang fakta.`;
-
-    // Mode switching berdasarkan mood
-    if (mood === "sedih") {
-        prompt += `\n\n⚠️ SUPPORT MODE AKTIF — User sedang sedih/curhat:
-- Validasi: "Wajar ko ngerasa bgtu"
-- Kasih solusi kecil HANYA kalau diminta`;
-    } else if (mood === "kesal") {
-        prompt += `\n\n⚠️ SUPPORT MODE AKTIF — User sedang kesal:
-- Jangan ceramah/menggurui
-- Validasi: "Kesel ya? Wajar sih"
-- Tanya: "Mau cerita atau mau distraksi?"`;
-    } else if (mood === "senang") {
-        prompt += `\n\n✨ User sedang senang → Ikut excited, boleh lebih ceria dan ekspresif!`;
-    } else if (mood === "bercanda") {
-        prompt += `\n\n😄 User lagi bercanda → Balas santai dan lucu secukupnya, tetap relevan.`;
-    } else if (mood === "flirty") {
-        prompt += `\n\n🙂 User lagi flirty → Tetap ramah, sopan, dan jaga batas profesional.`;
-    } else if (mood === "dingin") {
-        prompt += `\n\n❄️ User jawab singkat/dingin → Balas lebih ringkas, jelas, dan tidak memaksa.`;
-    }
-
-    // Mode toggle
-    if (mode === "gombal") prompt += `\n\n💝 MODE GOMBAL AKTIF: Boleh sisipkan gombal tipis jika konteks cocok, tetap sopan.`;
-    else if (mode === "serious") prompt += `\n\n🎯 MODE SERIUS AKTIF: Fokus, to the point, kurangi bercanda.`;
-    else if (mode === "story") prompt += `\n\n📖 MODE STORY AKTIF: Jelaskan pakai analogi atau cerita pendek yang relate.`;
-
-    return prompt;
-}
 
 // ============== FUNGSI STIKER ==============
 async function buatStiker(msg) {
@@ -753,7 +170,7 @@ async function buatStiker(msg) {
 
                 for (let a = 0; a < attempts.length; a++) {
                     const { fps, q, size } = attempts[a];
-                    
+
                     await new Promise((resolve, reject) => {
                         // Use simplified command untuk attempt 4 (fallback)
                         let args = a === 3 ? [
@@ -785,7 +202,7 @@ async function buatStiker(msg) {
                             '-vsync', '0',
                             tmpOut
                         ];
-                        
+
                         const proc = execFile(ffmpegPath, args, (err, stdout, stderr) => {
                             if (err) {
                                 const errMsg = stderr || err.message;
@@ -809,7 +226,7 @@ async function buatStiker(msg) {
 
                     const fileSize = fs.statSync(tmpOut).size;
                     console.log(`[STIKER] Attempt ${a+1} (${a === 3 ? 'simplified' : 'normal'}): ${fps}fps q${q} ${size}px → ${Math.round(fileSize/1024)}KB`);
-                    
+
                     if (fileSize <= 1024 * 1024 * 1.5) break; // < 1.5MB → OK
                     if (a === attempts.length - 1) break; // terakhir → pakai apapun hasilnya
                 }
@@ -832,7 +249,7 @@ async function buatStiker(msg) {
 
         return new MessageMedia('image/webp', webpBuffer.toString('base64'), 'stiker.webp');
     } catch (err) {
-        console.error('Error buat stiker:', err.message);
+        console.error('Error buat stiker:', err.stack || err.message || err);
         // Return object dengan error message untuk ditampilkan ke user
         return { error: err.message };
     }
@@ -1096,13 +513,13 @@ function startHealthMonitor() {
 }
 
 client.on('ready', () => {
-    console.log(`✅ Bot EsarFauzan siap! Model: ${MODEL_NAME}`);
-    console.log(`📊 Total chat: ${stats.totalChats}`);
+    console.log(`✅ Bot EsarFauzan siap! Mode: ${BOT_MODE}`);
+    console.log(`📊 Total chat: ${dataStore.learning.stats.totalChats}`);
     // Hanya jalankan scheduler sekali — cegah duplikat saat reconnect
     if (!schedulersStarted) {
-        startPrayerReminder();
-        startJadwalReminder();
-        startZikirAutoReminder();
+        startPrayerReminder({ client });
+        startJadwalReminder({ client });
+        startZikirAutoReminder({ client });
         schedulersStarted = true;
     }
     if (!healthMonitorStarted) {
@@ -1156,474 +573,32 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000); // cek setiap 5 menit
 
-// ============== JADWAL KULIAH SCHEDULER ==============
-function startJadwalReminder() {
-    console.log('📚 Jadwal kuliah reminder scheduler aktif');
-    setInterval(async () => {
-        if (groupJadwal.size === 0) return;
-
-        const { hariIdx: hari, jamMenit, tglKey } = getTimeContextInZone();
-        ensureJadwalInsightStateForDate(tglKey);
-        let stateChanged = false;
-
-        for (const jadwal of JADWAL_KULIAH) {
-            if (jadwal.hari !== hari) continue;
-
-            const reminderTime = jadwal.reminder;
-            const factTime = addMinutesToTime(reminderTime, -2);
-            const quoteTime = addMinutesToTime(reminderTime, 2);
-            if (![factTime, reminderTime, quoteTime].includes(jamMenit)) continue;
-
-            const eventBase = `${jadwal.hari}:${jadwal.reminder}:${jadwal.mulai}:${jadwal.matkul}`;
-            const groupIds = Array.from(groupJadwal.keys());
-            const insightGroupIds = groupIds.filter((groupId) => groupJadwalInsights.get(groupId) !== false);
-
-            if (jamMenit === factTime) {
-                const targetGroups = insightGroupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`fact:${groupId}:${eventBase}`));
-                if (targetGroups.length > 0) {
-                    const factText = await buildLatestITFactMessage();
-                    const message = `🧠 *FAKTA IT - 2 MENIT SEBELUM REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${factText}`;
-
-                    for (const groupId of targetGroups) {
-                        try {
-                            await client.sendMessage(groupId, message);
-                            jadwalInsightState.sentKeys.push(`fact:${groupId}:${eventBase}`);
-                            stateChanged = true;
-                            console.log(`💡 Fakta IT terkirim ke ${groupId}: ${jadwal.matkul}`);
-                        } catch (err) {
-                            console.error(`Error kirim fakta IT ke ${groupId}:`, err.message);
-                        }
-                    }
-                }
-            }
-
-            if (jamMenit === reminderTime) {
-                const targetGroups = groupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`reminder:${groupId}:${eventBase}`));
-                if (targetGroups.length > 0) {
-                    const pesan = `📚 *REMINDER KULIAH* - 1 jam lagi!
-─────────────────────
-📖 Mata Kuliah : *${jadwal.matkul}*
-🕑 Mulai       : *${jadwal.mulai} WITA*
-⏱️ Selesai    : *${jadwal.selesai} WITA*
-📅 Hari       : *${NAMA_HARI[jadwal.hari]}*
-─────────────────────
-_Jangan telat masuk kelas nya! 🙏_`;
-
-                    for (const groupId of targetGroups) {
-                        try {
-                            await client.sendMessage(groupId, pesan);
-                            jadwalInsightState.sentKeys.push(`reminder:${groupId}:${eventBase}`);
-                            stateChanged = true;
-                            console.log(`📚 Reminder kuliah terkirim ke ${groupId}: ${jadwal.matkul}`);
-                        } catch (err) {
-                            console.error(`Error kirim reminder kuliah ke ${groupId}:`, err.message);
-                        }
-                    }
-                }
-            }
-
-            if (jamMenit === quoteTime) {
-                const targetGroups = insightGroupIds.filter((groupId) => !jadwalInsightState.sentKeys.includes(`quote:${groupId}:${eventBase}`));
-                if (targetGroups.length > 0) {
-                    const quoteText = await buildITQuoteMessage();
-                    const message = `✨ *QUOTES IT - 2 MENIT SETELAH REMINDER KULIAH*\n📚 Mata Kuliah: *${jadwal.matkul}*\n\n${quoteText}`;
-
-                    for (const groupId of targetGroups) {
-                        try {
-                            await client.sendMessage(groupId, message);
-                            jadwalInsightState.sentKeys.push(`quote:${groupId}:${eventBase}`);
-                            stateChanged = true;
-                            console.log(`✨ Quotes IT terkirim ke ${groupId}: ${jadwal.matkul}`);
-                        } catch (err) {
-                            console.error(`Error kirim quotes IT ke ${groupId}:`, err.message);
-                        }
-                    }
-                }
-            }
-        }
-
-        if (stateChanged) {
-            saveJadwalInsightState();
-        }
-    }, 60 * 1000);
-}
-
-// ============== PRAYER TIME REMINDER SCHEDULER ==============
-function startPrayerReminder() {
-    console.log('🕌 Prayer reminder scheduler aktif');
-    setInterval(async () => {
-        if (groupReminders.size === 0) return;
-
-        const { jamMenit, tglKey } = getTimeContextInZone();
-
-        for (const [groupId, info] of groupReminders.entries()) {
-            try {
-                const cacheKey = `${info.kotaId}_${tglKey}`;
-
-                // Ambil jadwal jika belum di-cache
-                if (!prayerCache.has(cacheKey)) {
-                    const res = await axios.get(`https://api.myquran.com/v2/sholat/jadwal/${info.kotaId}/${tglKey}`);
-                    const jadwal = res.data?.data?.jadwal;
-                    if (jadwal) prayerCache.set(cacheKey, jadwal);
-                    // Bersihkan cache lama (bukan hari ini)
-                    for (const key of prayerCache.keys()) {
-                        if (!key.endsWith(tglKey)) prayerCache.delete(key);
-                    }
-                }
-
-                const jadwal = prayerCache.get(cacheKey);
-                if (!jadwal) continue;
-
-                const isPuasaMode = info?.puasaMode === true;
-
-                let pesan = null;
-                if (isPuasaMode && jamMenit === jadwal.imsak) pesan = `🔔 *IMSAK* - ${info.lokasi}\n🕐 ${jadwal.imsak}\n\n_Segera akhiri makan sahur! Imsak sudah masuk_ 🌙`;
-                else if (jamMenit === jadwal.subuh)  pesan = `🌅 *SUBUH* - ${info.lokasi}\n🕐 ${jadwal.subuh}\n\n_Waktunya sholat Subuh! Jangan sampai ketinggalan_ 🙏`;
-                else if (jamMenit === jadwal.dzuhur) pesan = `🌞 *DZUHUR* - ${info.lokasi}\n🕐 ${jadwal.dzuhur}\n\n_Waktunya sholat Dzuhur! Luangkan waktu sebentar_ 🙏`;
-                else if (jamMenit === jadwal.ashar)  pesan = `🌇 *ASHAR* - ${info.lokasi}\n🕐 ${jadwal.ashar}\n\n_Waktunya sholat Ashar! Jangan ditunda_ 🙏`;
-                else if (jamMenit === jadwal.maghrib) {
-                    pesan = isPuasaMode
-                        ? `🍽️ *BUKA PUASA & MAGHRIB* - ${info.lokasi}\n🕐 ${jadwal.maghrib}\n\n_Alhamdulillah, waktunya berbuka puasa! Selamat berbuka_ 😊🎉`
-                        : `🌆 *MAGHRIB* - ${info.lokasi}\n🕐 ${jadwal.maghrib}\n\n_Waktunya sholat Maghrib_ 🙏`;
-                }
-                else if (jamMenit === jadwal.isya)   pesan = `🌙 *ISYA* - ${info.lokasi}\n🕐 ${jadwal.isya}\n\n_Waktunya sholat Isya! Tutup hari dengan ibadah_ 🙏`;
-
-                if (pesan) {
-                    await client.sendMessage(groupId, pesan);
-                    console.log(`🕌 Reminder terkirim ke ${groupId}: ${jamMenit}`);
-                }
-            } catch (err) {
-                console.error(`Error reminder ${groupId}:`, err.message);
-            }
-        }
-    }, 60 * 1000); // cek setiap 1 menit
-}
-
-// ============== AUTO ZIKIR SCHEDULER ==============
-function startZikirAutoReminder() {
-    console.log('📿 Auto zikir scheduler aktif');
-    setInterval(async () => {
-        if (zikirAutoTargets.size === 0) return;
-
-        const { jamMenit, tglKey } = getTimeContextInZone();
-        ensureZikirStateForDate(tglKey);
-
-        const fixedTimes = {
-            '05:00': 'pagi',
-            '16:00': 'sore',
-            '23:00': 'tidur'
-        };
-
-        const pending = [];
-        const fixedType = fixedTimes[jamMenit];
-        if (fixedType) {
-            const key = `fixed:${fixedType}`;
-            if (!zikirAutoState.sentKeys.includes(key)) {
-                const text = buildZikirMessageByType(fixedType);
-                if (text) {
-                    pending.push({
-                        key,
-                        text: `⏰ *REMINDER ZIKIR ${fixedType.toUpperCase()}*\n\n${text}`
-                    });
-                }
-            }
-        }
-
-        for (const item of pending) {
-            for (const [chatId] of zikirAutoTargets.entries()) {
-                try {
-                    await client.sendMessage(chatId, item.text);
-                    console.log(`📿 Auto zikir terkirim ke ${chatId}: ${item.key}`);
-                } catch (err) {
-                    console.error(`Error auto zikir ke ${chatId}:`, err.message);
-                }
-            }
-            zikirAutoState.sentKeys.push(item.key);
-        }
-
-        for (const [chatId] of zikirAutoTargets.entries()) {
-            try {
-                const info = groupReminders.get(chatId);
-                if (!info?.kotaId) continue;
-
-                const cacheKey = `${info.kotaId}_${tglKey}`;
-                if (!prayerCache.has(cacheKey)) {
-                    const res = await axios.get(`https://api.myquran.com/v2/sholat/jadwal/${info.kotaId}/${tglKey}`);
-                    const jadwal = res.data?.data?.jadwal;
-                    if (jadwal) prayerCache.set(cacheKey, jadwal);
-                }
-
-                const jadwal = prayerCache.get(cacheKey);
-                if (!jadwal) continue;
-
-                const triggerTimes = [
-                    { name: 'subuh', time: addMinutesToTime(jadwal.subuh, 5) },
-                    { name: 'dzuhur', time: addMinutesToTime(jadwal.dzuhur, 5) },
-                    { name: 'ashar', time: addMinutesToTime(jadwal.ashar, 5) },
-                    { name: 'maghrib', time: addMinutesToTime(jadwal.maghrib, 5) },
-                    { name: 'isya', time: addMinutesToTime(jadwal.isya, 5) }
-                ];
-
-                const hit = triggerTimes.find((t) => t.time === jamMenit);
-                if (!hit) continue;
-
-                const key = `${chatId}:post-${hit.name}`;
-                if (zikirAutoState.sentKeys.includes(key)) continue;
-
-                await client.sendMessage(chatId, `🎲 *ZIKIR RANDOM +5 MENIT SETELAH ${hit.name.toUpperCase()}*\n\n${buildRandomZikirMessage({ includeHint: false })}`);
-                console.log(`📿 Zikir random pasca sholat terkirim ke ${chatId}: ${hit.name}`);
-                zikirAutoState.sentKeys.push(key);
-            } catch (err) {
-                console.error(`Error auto zikir pasca sholat ke ${chatId}:`, err.message);
-            }
-        }
-
-        saveZikirAutoState();
-    }, 60 * 1000);
-}
-
 // ============== MESSAGE HANDLER ==============
 client.on('message', async msg => {
     if (!['chat', 'image', 'video', 'document', 'sticker', 'ptt', 'audio'].includes(msg.type)) return;
 
     const isGroup = msg.from.includes('@g.us');
-    const rawBody = (msg.body || '');
-    const cleanBody = rawBody.replace(/@\d+/g, '').trim();
-    const isCommand = cleanBody.startsWith('!');
+    const rawBody = msg.body || '';
+    const mediaCaption = rawBody.replace(/@\d+/g, '').trim();
+    const legacyStickerCaption = msg.hasMedia && /^(stiker|sticker)$/i.test(mediaCaption);
+    const cleanBody = legacyStickerCaption ? '!stiker' : mediaCaption;
+    if (!cleanBody.startsWith('!')) return;
 
-    // Di grup: command (!) boleh langsung, chat biasa harus mention bot
-    if (isGroup && !isCommand) {
-        let isMentioned = false;
-
-        try {
-            const mentions = await msg.getMentions();
-            isMentioned = mentions.some(contact => contact.isMe);
-        } catch (e) {
-            // Fallback: cek mentionedIds by user number
-            const botNumber = client.info.wid.user;
-            isMentioned = (msg.mentionedIds || []).some(id => id.includes(botNumber));
-        }
-
-        if (!isMentioned) return;
-    }
-
-    const userId = msg.from;
-    const senderId = isGroup ? (msg.author || userId) : userId;
-    const cooldownKey = isGroup ? `${userId}:${senderId}` : userId;
-    const isImage = msg.type === 'image';
-    const isVideo = msg.type === 'video';
-    const isDocument = msg.type === 'document';
-    const isAudio = msg.type === 'ptt' || msg.type === 'audio';
-
-    const caption = cleanBody.toLowerCase().trim();
-    const isStikerRequest = caption === 'stiker' || caption === 'sticker';
-    console.log(`📩 ${isGroup ? '[GRUP]' : ''} ${userId}: ${(isImage || isVideo || isDocument) ? `[${msg.type.toUpperCase()}]` : rawBody}`);
-
-    // Cooldown
+    const senderId = isGroup ? (msg.author || msg.from) : msg.from;
+    const cooldownKey = isGroup ? `${msg.from}:${senderId}` : msg.from;
     const last = cooldowns.get(cooldownKey) || 0;
     if (Date.now() - last < COOLDOWN) return;
     cooldowns.set(cooldownKey, Date.now());
 
-    // Commands — cek dari cleanBody
-    if (cleanBody.startsWith('!')) {
-        // Override msg.body sementara agar handleCommand baca command bersih
-        const originalBody = msg.body;
-        msg.body = cleanBody;
-        await handleCommand(msg);
-        msg.body = originalBody;
-        return;
-    }
-
-    // ✅ DOKUMEN VIDEO → cek dulu apakah mau dijadikan stiker atau di-optimize
-    if (isDocument && msg.hasMedia) {
-        const mime = msg._data?.mimetype || '';
-        const filename = msg._data?.filename || '';
-        const isVideoDoc = mime.startsWith('video/') || mime === 'image/gif' ||
-            /\.(mp4|mkv|mov|avi|3gp|webm|gif)$/i.test(filename);
-
-        if (!isVideoDoc) return; // dokumen bukan video/gif → abaikan
-
-        // Kalau caption "stiker" → jadikan stiker animated
-        if (isStikerRequest) {
-            try {
-                const chat = await msg.getChat();
-                chat.sendStateTyping();
-                const result = await buatStiker(msg);
-                if (result?.error) {
-                    const errMsg = String(result.error).substring(0, 150);
-                    msg.reply(`Gagal buat stiker 😹\nAlasan: ${errMsg}`);
-                } else if (result) {
-                    await kirimStiker(client, userId, msg, result);
-                } else {
-                    msg.reply('Aiih gagal buat stikernya 😹 coba lagi yaa');
-                }
-            } catch (e) {
-                const errMsg = String(e.message).substring(0, 150);
-                console.error('Error stiker dokumen:', e.message);
-                msg.reply(`Gagal sy buat stikernya 😹\n${errMsg}`);
-            }
-            return;
-        }
-
-        // Kalau bukan request stiker, abaikan saja karena tidak ada command eksplisit
-        return;
-    }
-
-    // ✅ Foto/GIF + caption "stiker" → langsung dijadikan stiker
-    if (msg.hasMedia && (isImage || isVideo) && isStikerRequest) {
-        try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
-            const result = await buatStiker(msg);
-            if (result?.error) {
-                const errMsg = String(result.error).substring(0, 150);
-                msg.reply(`Gagal buat stiker 😹\nAlasan: ${errMsg}`);
-            } else if (result) {
-                await kirimStiker(client, userId, msg, result);
-            } else {
-                msg.reply('Aiih gagal buat stikernya, Nanti coba lagi ya 😹');
-            }
-        } catch (e) {
-            const errMsg = String(e.message).substring(0, 150);
-            console.error('Error stiker:', e.message);
-            msg.reply(`Gagal sy buat stikernya 😹\n${errMsg}`);
-        }
-        return;
-    }
-
-    // ✅ Video biasa (bukan gif) → abaikan, jangan diproses AI
-    if (isVideo && !isStikerRequest) return;
-
     try {
-        const chat = await msg.getChat();
-        chat.sendStateTyping();
-        await delay(1000, 2000);
-
-        if (!history.has(userId)) history.set(userId, []);
-        const h = history.get(userId);
-
-        let userMessage, modelToUse = MODEL_NAME;
-
-        // Handle Audio / Voice Note
-        if (isAudio && msg.hasMedia) {
-            try {
-                if (!genAI) {
-                    return msg.reply("API Key Gemini belum diatur untuk transkrip suara 😹");
-                }
-                const media = await msg.downloadMedia();
-                if (media && media.data) {
-                    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-                    
-                    const prompt = `Transkrip pesan suara ini ke teks. Ubah ke format perintah bot jika pengguna meminta hal berikut:
-1. Mengatur alarm/pengingat -> "!ingatkan [waktu] | [pesan]" (Contoh: !ingatkan 15 menit | angkat jemuran). 
-2. Menambah todo list -> "!todo tambah [tugas]" (Contoh: !todo tambah beli telur).
-3. Menyelesaikan/mencoret todo -> "!todo coret [nomor]" (Contoh jika user bilang "coret todo nomor satu dan dua" -> !todo coret 1, 2).
-4. Menghapus todo -> "!todo hapus [nomor]" (Contoh jika user bilang "hapus todo nomor satu dan dua" -> !todo hapus 1, 2).
-5. Melihat todo list -> "!todo" (Contoh jika user bilang "lihat todo list").
-Jika bukan perintah di atas, tulis teks aslinya saja. HANYA hasil teks, tanpa kata pengantar.`;
-
-                    const result = await model.generateContent([
-                        prompt,
-                        { inlineData: { data: media.data, mimeType: media.mimetype } }
-                    ]);
-
-                    let text = result.response.text().trim();
-                    text = text.replace(/^```|```$/g, "").trim();
-
-                    if (text.startsWith('!ingatkan') || text.startsWith('!todo')) {
-                        const originalBody = msg.body;
-                        msg.body = text;
-                        await handleCommand(msg);
-                        msg.body = originalBody;
-                        return; // Selesai diproses sebagai command
-                    } else {
-                        userMessage = text;
-                    }
-                }
-            } catch (e) {
-                console.error("Error transkrip audio:", e.message);
-                return msg.reply("Aduh gagal dengerin suaranya 😹");
-            }
-        }
-        // Handle image (analisis AI)
-        else if (isImage && msg.hasMedia) {
-            try {
-                const media = await msg.downloadMedia();
-                if (media && media.data) {
-                    modelToUse = VISION_MODEL;
-                    userMessage = [
-                        { type: "image_url", image_url: { url: `data:${media.mimetype};base64,${media.data}` } },
-                        { type: "text", text: msg.body || "Apa ini?" }
-                    ];
-                }
-            } catch (e) {
-                return msg.reply("Aduh fotonya nd kebaca 😅");
-            }
-        } else {
-            userMessage = msg.body;
-
-            // Check salam (hanya untuk chat pertama)
-            const salam = checkSalam(userMessage);
-            if (salam && h.length === 0) {
-                msg.reply(salam);
-                h.push({ role: "user", content: userMessage });
-                h.push({ role: "assistant", content: salam });
-                logChat(userId, userMessage, salam);
-                return;
-            }
-        }
-
-        // Add to history
-        if (typeof userMessage === 'string') {
-            h.push({ role: "user", content: userMessage });
-        }
-
-        // Trim history (keep pairs)
-        while (h.length > MAX_HISTORY) { h.shift(); h.shift(); }
-
-        // Build messages
-        const sysPrompt = buildPrompt(userId, typeof userMessage === 'string' ? userMessage : '');
-        let messages;
-
-        if (Array.isArray(userMessage)) {
-            messages = [
-                { role: "system", content: "Kamu asisten pribadi pintar milik Esar Fauzan. Ada yg kirim foto di WA. Beri komentar 1 kalimat yang natural, sopan, dan cerdas." },
-                { role: "user", content: userMessage }
-            ];
-        } else {
-            messages = [{ role: "system", content: sysPrompt }, ...h];
-        }
-
-        // API call
-        const res = await openai.chat.completions.create({
-            model: modelToUse,
-            messages,
-            temperature: 0.6,
-            max_tokens: 120
-        });
-
-        let reply = res.choices[0].message.content;
-
-        // Fallback
-        if (!reply || !reply.trim()) {
-            reply = ["Hmm?", "Iya?", "Knp?", "Gmn?"][Math.floor(Math.random() * 4)];
-        }
-
-        // Clean: strip quotes if AI wraps in quotes
-        reply = reply.replace(/^["']|["']$/g, '').trim();
-
-        // Limit emoji max 2
-        let emojiCount = 0;
-        reply = reply.replace(/[\u{1F300}-\u{1F9FF}]/gu, m => (++emojiCount <= 2 ? m : ''));
-
-        // Save & send
-        h.push({ role: "assistant", content: reply });
-        if (typeof userMessage === 'string') logChat(userId, userMessage, reply);
-        msg.reply(reply);
-
+        console.log(`[COMMAND] ${isGroup ? '[GRUP]' : ''} ${msg.from}: ${cleanBody}`);
+        const commandMsg = Object.create(msg);
+        commandMsg.body = cleanBody;
+        recordCommandActivity();
+        await handleCommand(commandMsg);
     } catch (err) {
-        console.error("Error:", err.message);
-        msg.reply(["Bentar ya", "Tunggu jo", "Hmm iya sebentar"][Math.floor(Math.random() * 3)]);
+        console.error('Error command:', err.message);
+        msg.reply('Command gagal diproses. Coba lagi sebentar.');
     }
 });
 
@@ -1670,6 +645,8 @@ const handleCommand = createCommandRouter({
     downloadTikTokVideo,
     downloadYouTubeVideo,
     removeBackground,
-    upscaleImage
+    upscaleImage,
+    jobQueue: mediaJobQueue,
+    rateLimiter: mediaRateLimiter
 });
 client.initialize();

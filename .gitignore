@@ -4,3 +4,24 @@ node_modules/
 .wwebjs_cache/
 learned_data.json
 chat_logs.json
+akademik.json
+jadwal_groups.json
+jadwal_insight_groups.json
+jadwal_insight_state.json
+jadwal_kuliah.json
+notes.json
+reminders.json
+sholat_modes.json
+todos.json
+ujian.json
+zikir_auto_state.json
+zikir_auto_targets.json
+
+# File sementara / backup dari tulis atomic
+*.tmp
+*.bak
+
+# File download sementara (yt-dlp) di root project
+ig_tmp_*.mp4
+tt_tmp_*.mp4
+yt_tmp_*.mp4
