@@ -7,22 +7,16 @@ const sharp = require('sharp');
 const { execFile } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const axios = require('axios');
-const schedule = require('node-schedule');
 const dataStore = require('./src/storage/dataStore');
-const { getTimeContextInZone } = require('./src/utils/timeContext');
 const { createJobQueue, createRateLimiter } = require('./src/utils/jobQueue');
-const { JADWAL_KULIAH, NAMA_HARI, saveKuliahSchedule } = require('./src/storage/jadwalKuliahStore');
 const { buildHelpMenu } = require('./src/messages/helpMenu');
 const { createCommandRouter } = require('./src/commands/createCommandRouter');
 const { buildHealthReport, buildHealthLogLine } = require('./src/monitoring/health');
-const { startPrayerReminder } = require('./src/schedulers/prayerScheduler');
-const { startJadwalReminder } = require('./src/schedulers/jadwalScheduler');
-const { startZikirAutoReminder } = require('./src/schedulers/zikirScheduler');
 
 const REQUIRED_ENV = [];
 const OPTIONAL_ENV = {
     CLIPDROP_API_KEY: 'remove background & upscale image',
-    IMGBB_API_KEY: 'fitur storyin (unggah video)'
+    IMGBB_API_KEY: 'fitur !qr dari gambar (unggah foto)'
 };
 
 function validateEnvironment() {
@@ -71,34 +65,10 @@ const mediaJobQueue = createJobQueue({ concurrency: 1 });
 const mediaRateLimiter = createRateLimiter(HEAVY_COOLDOWN_MS);
 
 // ============== DATA (via dataStore) ==============
-// Semua state dipersist atomic oleh dataStore. Handler command memanggil
-// save* (wrapper persist per domain) setelah mutasi map/array di atas.
-const groupReminders = dataStore.reminders;
-const groupJadwal = dataStore.jadwal;
-const groupJadwalInsights = dataStore.jadwalInsight;
-const sholatModes = dataStore.sholatMode;
-const zikirAutoTargets = dataStore.zikirAuto;
-const groupNotes = dataStore.notes;
-const userTodos = dataStore.todo;
-const jadwalUjian = dataStore.ujian;
-const LINK_AKADEMIK = dataStore.akademik;
-const jadwalInsightState = dataStore.jadwalInsightState;
-const zikirAutoState = dataStore.zikirAutoState;
-
 // Statistik chat (learning). Jaga bentuk agar kompatibel dengan format lama.
 if (!dataStore.learning.stats) dataStore.learning.stats = { totalChats: 0, lastActive: null };
 if (!Array.isArray(dataStore.learning.expressions)) dataStore.learning.expressions = [];
 const stats = dataStore.learning.stats;
-
-const saveReminders = () => dataStore.persist('reminders');
-const saveJadwalGroups = () => dataStore.persist('jadwal');
-const saveJadwalInsightGroups = () => dataStore.persist('jadwalInsight');
-const saveSholatModes = () => dataStore.persist('sholatMode');
-const saveZikirAutoTargets = () => dataStore.persist('zikirAuto');
-const saveNotes = () => dataStore.persist('notes');
-const saveTodos = () => dataStore.persist('todo');
-const saveUjian = () => dataStore.persist('ujian');
-const saveAkademik = () => dataStore.persist('akademik');
 
 function recordCommandActivity() {
     dataStore.learning.stats.totalChats++;
@@ -110,7 +80,6 @@ function recordCommandActivity() {
 const history = new Map();
 const cooldowns = new Map();
 const COOLDOWN = 2000;
-const userModes = new Map();
 
 // ============== FUNGSI STIKER ==============
 async function buatStiker(msg) {
@@ -472,7 +441,6 @@ client.on('qr', qr => {
     qrcode.generate(qr, { small: true });
 });
 
-let schedulersStarted = false;
 let healthMonitorStarted = false;
 
 function getHealthStatus() {
@@ -481,12 +449,6 @@ function getHealthStatus() {
         stats,
         historySize: history.size,
         cooldownSize: cooldowns.size,
-        groupRemindersSize: groupReminders.size,
-        groupJadwalSize: groupJadwal.size,
-        groupNotesSize: groupNotes.size,
-        userTodosSize: userTodos.size,
-        jadwalUjianSize: jadwalUjian.length,
-        schedulersStarted,
         healthMonitorStarted,
         timezone: BOT_TIMEZONE
     });
@@ -500,12 +462,6 @@ function startHealthMonitor() {
             stats,
             historySize: history.size,
             cooldownSize: cooldowns.size,
-            groupRemindersSize: groupReminders.size,
-            groupJadwalSize: groupJadwal.size,
-            groupNotesSize: groupNotes.size,
-            userTodosSize: userTodos.size,
-            jadwalUjianSize: jadwalUjian.length,
-            schedulersStarted,
             healthMonitorStarted,
             timezone: BOT_TIMEZONE
         }));
@@ -515,13 +471,6 @@ function startHealthMonitor() {
 client.on('ready', () => {
     console.log(`✅ Bot EsarFauzan siap! Mode: ${BOT_MODE}`);
     console.log(`📊 Total chat: ${dataStore.learning.stats.totalChats}`);
-    // Hanya jalankan scheduler sekali — cegah duplikat saat reconnect
-    if (!schedulersStarted) {
-        startPrayerReminder({ client });
-        startJadwalReminder({ client });
-        startZikirAutoReminder({ client });
-        schedulersStarted = true;
-    }
     if (!healthMonitorStarted) {
         startHealthMonitor();
         healthMonitorStarted = true;
@@ -610,34 +559,10 @@ const handleCommand = createCommandRouter({
     fs,
     sharp,
     MessageMedia,
-    schedule,
-    userModes,
     stats,
     history,
     buildHelpMenu,
     getHealthStatus,
-    groupReminders,
-    saveReminders,
-    sholatModes,
-    saveSholatModes,
-    groupJadwalInsights,
-    saveJadwalInsightGroups,
-    groupJadwal,
-    saveJadwalGroups,
-    saveKuliahSchedule,
-    zikirAutoTargets,
-    saveZikirAutoTargets,
-    getTimeContextInZone,
-    NAMA_HARI,
-    JADWAL_KULIAH,
-    userTodos,
-    saveTodos,
-    groupNotes,
-    saveNotes,
-    LINK_AKADEMIK,
-    saveAkademik,
-    jadwalUjian,
-    saveUjian,
     buatStiker,
     kirimStiker,
     optimizeVideo,

@@ -12,34 +12,28 @@ function createMockMsg() {
     };
 }
 
-test('!mode gombal sets mode and replies', async () => {
-    const userModes = new Map();
-    const handler = createBasicCommandsHandler({
-        userModes,
-        stats: { totalChats: 0, lastActive: null },
+function createHandler(overrides = {}) {
+    return createBasicCommandsHandler({
+        stats: { totalChats: 7, lastActive: '2026-01-01T00:00:00.000Z' },
         history: new Map(),
         buildHelpMenu: () => 'MENU',
-        getHealthStatus: () => 'HEALTH'
+        getHealthStatus: () => 'HEALTH REPORT MOCK',
+        ...overrides
     });
+}
 
+test('!stats replies with total chat count', async () => {
+    const handler = createHandler();
     const msg = createMockMsg();
-    const handled = await handler({ cmd: '!mode gombal', msg, uid: 'u1' });
+    const handled = await handler({ cmd: '!stats', msg, uid: 'u1' });
 
     assert.equal(handled, true);
-    assert.equal(userModes.get('u1'), 'gombal');
     assert.equal(msg.replies.length, 1);
-    assert.match(msg.replies[0], /Mode Gombal aktif/i);
+    assert.match(msg.replies[0], /Total chat: 7/);
 });
 
 test('!health uses injected health provider', async () => {
-    const handler = createBasicCommandsHandler({
-        userModes: new Map(),
-        stats: { totalChats: 0, lastActive: null },
-        history: new Map(),
-        buildHelpMenu: () => 'MENU',
-        getHealthStatus: () => 'HEALTH REPORT MOCK'
-    });
-
+    const handler = createHandler();
     const msg = createMockMsg();
     const handled = await handler({ cmd: '!health', msg, uid: 'u1' });
 
@@ -47,15 +41,28 @@ test('!health uses injected health provider', async () => {
     assert.equal(msg.replies[0], 'HEALTH REPORT MOCK');
 });
 
-test('unknown command returns false', async () => {
-    const handler = createBasicCommandsHandler({
-        userModes: new Map(),
-        stats: { totalChats: 0, lastActive: null },
-        history: new Map(),
-        buildHelpMenu: () => 'MENU',
-        getHealthStatus: () => 'HEALTH'
-    });
+test('!menu replies with buildHelpMenu output', async () => {
+    const handler = createHandler();
+    const msg = createMockMsg();
+    const handled = await handler({ cmd: '!menu', msg, uid: 'u1' });
 
+    assert.equal(handled, true);
+    assert.equal(msg.replies[0], 'MENU');
+});
+
+test('!reset clears history for the user', async () => {
+    const history = new Map([['u1', ['a']]]);
+    const handler = createHandler({ history });
+    const msg = createMockMsg();
+    const handled = await handler({ cmd: '!reset', msg, uid: 'u1' });
+
+    assert.equal(handled, true);
+    assert.equal(history.has('u1'), false);
+    assert.equal(msg.replies.length, 1);
+});
+
+test('unknown command returns false', async () => {
+    const handler = createHandler();
     const msg = createMockMsg();
     const handled = await handler({ cmd: '!unknown', msg, uid: 'u1' });
 

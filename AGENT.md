@@ -12,12 +12,15 @@ dan **hal-hal yang masih bermasalah / belum dikerjakan**.
 ## 1. Ringkasan Project
 
 Bot WhatsApp berbasis **Node.js (CommonJS)** memakai `whatsapp-web.js` + Puppeteer.
-Mode berjalan: **command-only** (hanya merespons pesan yang diawali `!`).
+Mode berjalan: **command-only** (hanya merespons pesan yang diawali `!`, plus
+caption media `stiker`/`sticker` yang dipetakan ke `!stiker`).
 
-- Entry point: `index.js` (±1701 baris)
+- Entry point: `index.js` (client, router command, helper media)
 - Struktur folder: `src/commands`, `src/messages`, `src/monitoring`, `src/storage`, `src/utils`
 - Persistensi: file JSON di root project (tanpa database)
-- Test: `node:test`, saat ini **7 test lolos** (`npm test`)
+- Test: `node:test`, saat ini **29 test lolos** (`npm test`)
+- Dependency `whatsapp-web.js` di-pin ke fork `lindionez` (fix bug `r: r`
+  untuk chat `@lid`; PR resmi #201840 belum dirilis di npm).
 
 ---
 
@@ -26,52 +29,58 @@ Mode berjalan: **command-only** (hanya merespons pesan yang diawali `!`).
 ### 2.1 Struktur yang Ada
 ```
 bot-wa/
-├─ index.js                      # entry: client, router command, helper media (±660 baris)
+├─ index.js                      # entry: client, router command, helper media
 ├─ package.json                  # CommonJS, "type": "commonjs"
 ├─ .env                          # (ada di root; sudah masuk .gitignore)
-├─ *.json                        # file data: reminders, jadwal, notes, dll.
+├─ *.json                        # file data lama: reminders, notes, dll. (sisa)
 └─ src/
    ├─ commands/
-   │  ├─ basicCommands.js          # mode, stats, health, reset, help/menu
-   │  ├─ mediaCommands.js          # stiker, storyin, download, kompres, dsb. (pakai jobQueue + rateLimiter)
-   │  ├─ reminderJadwalCommands.js # reminder & jadwal grup
-   │  ├─ utilityCommands.js        # cuaca, sholat, zikir, quran, dll.
-   │  ├─ productivityCommands.js   # todo, notes, akademik, ujian
+   │  ├─ basicCommands.js          # stats, health, reset, help/menu
+   │  ├─ mediaCommands.js          # stiker, storyin, download, kompres, rmbg, upscale, qr (pakai jobQueue + rateLimiter)
    │  └─ createCommandRouter.js    # orkestrator (chain handler)
    ├─ messages/
-   │  ├─ helpMenu.js
-   │  └─ itContent.js              # (BARU) quotes & fakta IT (tanpa openai)
+   │  └─ helpMenu.js               # daftar fitur yang dipertahankan
    ├─ monitoring/health.js
-   ├─ schedulers/                  # (BARU) dipindah dari index.js
-   │  ├─ prayerScheduler.js        # reminder sholat per grup
-   │  ├─ jadwalScheduler.js        # reminder jadwal kuliah + insight (fakta/quotes IT)
-   │  ├─ zikirScheduler.js         # auto zikir (tetap + random pasca sholat)
-   │  └─ prayerTimes.js            # fetch jadwal sholat + cache bersama
    ├─ storage/
    │  ├─ learningDataStore.js       # (lama) khusus data learning
    │  ├─ jsonStore.js               # load/save atomic + backup
-   │  ├─ dataStore.js               # konsolidasi state & persistensi (persist per domain)
-   │  └─ jadwalKuliahStore.js       # (BARU) jadwal_kuliah.json + normalisasi
+   │  └─ dataStore.js               # konsolidasi state & persistensi (persist per domain)
    └─ utils/
-      ├─ timeContext.js
-      ├─ timeHelpers.js             # addMinutesToTime, pickRandom
+      ├─ safeTyping.js              # indikator typing yang aman (abaikan error @lid)
+      ├─ timeContext.js             # helper zona waktu (tidak dipakai handler aktif)
+      ├─ timeHelpers.js             # addMinutesToTime, pickRandom (tidak dipakai handler aktif)
       └─ jobQueue.js                # antrean job (enqueue → Promise) + rate limiter
 ```
 
-### 2.2 Temuan Penting (dari analisis kode asli)
-- **Dead code AI**: `openai`, `genAI`, `MODEL_NAME`, `VISION_MODEL` **tidak pernah
-  didefinisikan**. Blok `client.on('message_disabled')` (handler lama berisi
-  transkrip suara/analisis gambar AI) adalah **dead code** yang tidak pernah aktif
-  karena handler aktif saat ini hanya me-route command `!...`.
+### 2.2 Fitur yang Dipertahankan
+- 📥 **Download**: `!ig [link]`, `!tiktok [link]`, `!yt [link]`, `!yt audio [link]`
+- 🎬 **Story**: `!storyin` (reply/send video dokumen → optimize HD)
+- 🖼️ **Stiker & Edit Foto**: caption `stiker`/`sticker` → auto stiker; `!stiker`,
+  `!rmbg`, `!upscale`, `!kompres`, `!qr [teks/link]`, foto + `!qr`
+- ⚙️ **Lainnya**: `!stats`, `!health`, `!reset`, `!menu`
+
+### 2.3 Fitur yang Sudah Dihapus (2026-09)
+- Command & handler: `!mode*`, `!cuaca`, `!sholat`, `!quran`, `!reminder`,
+  `!jadwal*`, `!catat`/`!notes`, `!todo`, `!ingatkan`, `!akademik`, `!ujian`,
+  `!anime`, `!zikir`, `!github` → file `reminderJadwalCommands.js`,
+  `utilityCommands.js`, `productivityCommands.js` dihapus.
+- Scheduler otomatis (prayer reminder, jadwal kuliah + insight IT, auto zikir)
+  dihapus → folder `src/schedulers/` tidak ada lagi.
+- Modul pendukung yang hanya dipakai fitur di atas ikut dihapus: `itContent.js`,
+  `jadwalKuliahStore.js`, test-nya, dan dependency `node-schedule`.
+- `index.js` tidak lagi menjalankan scheduler maupun menyimpan state domain
+  reminders/jadwal/sholat/zikir/notes/todo/ujian/akademik; dataStore tetap memuat
+  file JSON lama namun hanya domain `learning` yang dipakai handler aktif.
+
+### 2.4 Temuan Penting (dari analisis kode)
 - **Handler aktif sederhana**: `client.on('message')` di `index.js` hanya memproses
   command yang diawali `!`; caption media `stiker`/`sticker` dipetakan ke `!stiker`.
-- **Persistensi terpecah**: ada ~15 fungsi `load*` / `save*` di `index.js` yang
-  membaca-menulis file JSON satu per satu, memakai `fs` langsung **tanpa tulis
-  atomic** (risiko file korup bila crash).
-- **`index.js` terlalu besar** (±1701 baris): scheduler, stiker (ffmpeg/sharp),
-  downloader (yt-dlp), dan salam dicampur di satu file.
-- **Task berat tanpa antrean**: stiker video & download dijalankan langsung tanpa
-  antrean/cooldown khusus → berisiko overload pada VPS RAM kecil.
+- **Bug whatsapp-web.js untuk `@lid`**: error minified `r: r` pada `downloadMedia`,
+  `getChat`, typing untuk nomor format baru. Diatasi dengan (1) helper
+  `safeTyping()` yang mengabaikan error typing, dan (2) mem-pin dependency ke
+  fork `lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`.
+- **Task berat memakai antrean**: stiker video & download lewat `mediaJobQueue`
+  (concurrency 1) + `mediaRateLimiter` (cooldown 20 detik per user per command).
 - **Rate limit global**: satu `cooldowns` map dengan jeda 2 detik per user.
 
 ---
@@ -81,89 +90,46 @@ bot-wa/
 > Yang tercantum di bawah ini adalah file yang **benar-benar dibuat/diubah**
 > dan sudah dicek bisa di-`require` / dijalankan.
 
-### 3.1 File Baru
+### 3.1 Perubahan Pemangkasan Fitur (terbaru)
+- `src/commands/createCommandRouter.js`: hanya me-wire `basicCommands` + `mediaCommands`.
+- `src/commands/basicCommands.js`: hapus `!mode*`, sisakan `!stats`, `!health`,
+  `!reset`, `!menu`/`!help` (tanpa dependency `userModes`).
+- `src/messages/helpMenu.js`: menu ramping hanya fitur yang dipertahankan.
+- `src/monitoring/health.js`: baris reminder/jadwal/notes/todos/ujian/scheduler dihapus.
+- `index.js`: hapus require & startup scheduler, alias state domain yang dihapus,
+  wrapper `save*`, `userModes`, `schedule`, dan dependency `node-schedule`.
+- File dihapus: `src/commands/{reminderJadwalCommands,utilityCommands,productivityCommands}.js`,
+  `src/schedulers/*`, `src/messages/itContent.js`, `src/storage/jadwalKuliahStore.js`,
+  `tests/{itContent,jadwalKuliahStore}.test.js`.
+- `tests/basicCommands.test.js` ditulis ulang untuk `!stats`/`!health`/`!menu`/`!reset`.
 
-| File | Isi / Fungsi |
-|------|--------------|
-| `src/storage/jsonStore.js` | `loadJSON(file, opts)` & `saveJSON(file, data)`. Tulis **atomic**: `writeFileSync` → `.tmp` → `rename`; backup otomatis ke `.bak`; fallback baca dari `.bak` jika file utama korup. |
-| `src/storage/dataStore.js` | Konsolidasi state in-memory untuk semua domain (`learning`, `chatLog`, `reminders`, `jadwal`, `jadwalInsight`, `sholatMode`, `zikirAuto`, `notes`, `todo`, `ujian`, `akademik`, `jadwalInsightState`, `zikirAutoState`) + fungsi `loadAll()` / `saveAll()`. Memakai `jsonStore` untuk semua tulis. |
-| `src/utils/jobQueue.js` | `createJobQueue({ concurrency })` (antrean FIFO, error ditangkap, tidak menggagalkan proses) dan `createRateLimiter(cooldownMs)` (per-key, `check`/`hit`/`cleanup`). |
-| `src/utils/timeHelpers.js` | `addMinutesToTime(hhmm, offset)` dan `pickRandom(items)` (dipindah dari helper inline di `index.js`). |
-
-### 3.2 Perbaikan Bug Selama Pembuatan
-1. **Bug path `BASE_DIR`** di `dataStore.js`:
-   - Semula: `__dirname.replace(/storage$/,'')` → salah, menunjuk ke `src/`.
-   - Diperbaiki: `path.join(__dirname, '..', '..')` → root project.
-2. **Bug `new Map(obj)`** di `dataStore.js`:
-   - Semula memakai `new Map(...)` pada objek plain → `TypeError: object is not iterable`.
-   - Diperbaiki: helper `toMap()` memakai `Object.entries(...)`.
-
-### 3.3 Status Verifikasi
-- `node --check` lolos untuk semua file baru/berubah.
-- `dataStore.js` berhasil di-`require` dan memuat data nyata
-  (contoh hasil: `reminders=1, jadwal=1, sholatMode=0, notes=2, ujian=0, akademik=2`).
-- `npm test` → **35/35 lolos** (7 lama + 28 test baru untuk modul refactor).
-
-### 3.4 Refactor Besar (selesai)
-1. **`index.js` ditulis ulang** (±1701 → ±660 baris):
-   - Semua `load*/save*` lama (pakai `fs` langsung) dihapus → semua state lewat `dataStore`
-     (alias ke Map/array yang sama; `save*` sekarang wrapper `dataStore.persist('<domain>')`).
-   - Dead code AI dihapus: blok `client.on('message_disabled')`, `openai`, `genAI`,
-     `MODEL_NAME`, `VISION_MODEL`, `buildPrompt`, `detectMood`, `checkSalam`/`SALAM_DB`,
-     `logChat`, `delay`, `MAX_HISTORY` sudah tidak ada.
-   - Scheduler dipindah ke `src/schedulers/`; `buildITQuoteMessage`/`buildLatestITFactMessage`
-     ke `src/messages/itContent.js`; jadwal kuliah ke `src/storage/jadwalKuliahStore.js`.
-2. **`dataStore.js`**: tambah `persist(domain)` (simpan 1 domain saja, atomic via jsonStore);
-   `saveAll()` di-refactor memakai map yang sama.
-3. **`jobQueue.js`**: `enqueue()` sekarang return `Promise` (resolve hasil job / reject error),
-   sehingga pemanggil bisa `await` job yang sedang antre.
-4. **`mediaCommands.js`**: task berat (`!stiker`, `!storyin`, `!ig`, `!tiktok`, `!yt`,
-   `!rmbg`, `!upscale`) sekarang lewat `mediaJobQueue` (concurrency 1) + `mediaRateLimiter`
-   (cooldown 20 detik per user per command). Kalau kena cooldown, user diberi tahu
-   "coba lagi dalam N detik". Ada fallback: bila `jobQueue`/`rateLimiter` tidak di-inject
-   (mis. deploy parsial), command dijalankan langsung seperti perilaku lama.
-5. **`jadwalKuliahStore.js`** (BARU): pemilik `jadwal_kuliah.json`, tulis atomic (jsonStore),
-   self-load saat require, ekspor `JADWAL_KULIAH` live yang sama untuk command & scheduler.
-6. **`.gitignore`**: tambah `*.tmp`, `*.bak`, `ig_tmp_*.mp4`, `tt_tmp_*.mp4`, `yt_tmp_*.mp4`.
+### 3.2 Status Verifikasi
+- `node --check` lolos untuk `index.js` dan semua file command/menu/health.
+- `npm test` → **29/29 lolos**.
 
 ---
 
 ## 4. Yang Masih Bermasalah / Belum Dikerjakan
 
-### 4.1–4.4 ✅ SUDAH SELESAI
-- `dataStore` sudah terintegrasi penuh ke `index.js` (4.1).
-- `jobQueue` + `rateLimiter` sudah dipakai di `mediaCommands.js` (4.2).
-- Scheduler sudah dipindah ke `src/schedulers/*` (4.3).
-- Dead code AI (`message_disabled`, `openai`, `genAI`) sudah dihapus (4.4).
+### 4.1 Catatan Berkas Data
+- File `*.json` data lama (reminders, jadwal, notes, dll.) masih ada di root dan
+  di-load `dataStore`, tapi tidak lagi dipakai command/scheduler. Aman dibiarkan
+  atau dihapus manual; pastikan tidak di-commit.
 
-### 4.5 Catatan Berkas Data
-- `.gitignore` sudah mencakup `.env`, semua file `*.json` data, plus `*.tmp`/`*.bak`
-  dan file download sementara. Pastikan file `*.json` data tidak di-commit.
-
-### 4.6 Catatan Tes
-- Test untuk `jsonStore`, `jobQueue`, `timeHelpers`, `dataStore` (smoke read-only),
-  `jadwalKuliahStore`, dan `itContent` sudah ada (`npm test` → 35/35).
+### 4.2 Catatan Tes
+- Test tersisa: `basicCommands`, `dataStore` (smoke read-only), `jobQueue`,
+  `jsonStore`, `learningDataStore`, `timeContext`, `timeHelpers`.
 - `dataStore` sengaja hanya di-smoke-test (read-only) karena menulis file data asli.
 
-### 4.7 Masih Bisa Ditingkatkan (opsional)
-- Duplikasi helper kecil di `reminderJadwalCommands.js` (`buildReminderTimeFromStart`,
-  `sortJadwalKuliah`) vs `jadwalKuliahStore.js` — bisa diimpor dari store.
-- `chatLog` domain di `dataStore` belum dipakai handler aktif (sisa dari handler lama).
-- `learningDataStore.js` bisa disatukan ke `dataStore` (normalisasi learning).
+### 4.3 Masih Bisa Ditingkatkan (opsional)
+- `!ig` anonim sering kena rate-limit Instagram (`login required`) — butuh cookie
+  login via yt-dlp bila mau andal.
+- `timeContext.js` / `timeHelpers.js` kini tidak dipakai handler aktif — bisa dihapus.
+- Begitu `whatsapp-web.js` resmi merilis fix `@lid`, kembalikan dependency ke versi npm.
 
 ---
 
-## 5. Prioritas Tindak Lanjut (jika diminta)
-1. ✅ Integrasikan `dataStore` ke `index.js` — selesai.
-2. ✅ Terapkan `jobQueue` + `rateLimiter` di `mediaCommands.js` — selesai.
-3. ✅ Pindahkan scheduler ke `src/schedulers/*` — selesai.
-4. ✅ Hapus dead code AI (`message_disabled`, `openai`, `genAI`) — selesai.
-5. ✅ Tambah test untuk modul baru; rapikan `.gitignore` — selesai.
-6. (Opsional) Rapikan duplikasi helper jadwal kuliah di `reminderJadwalCommands.js`.
-
----
-
-## 6. Cara Menjalankan
+## 5. Cara Menjalankan
 ```bash
 npm install      # pasang dependensi
 npm start        # jalankan bot (node index.js)

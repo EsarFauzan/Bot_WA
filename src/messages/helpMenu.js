@@ -1,6 +1,5 @@
-function buildHelpMenu(currentMode = 'normal') {
+function buildHelpMenu() {
     return `🤖 *ASISTEN PRIBADI ESARFAUZAN*
-Mode aktif: *${String(currentMode).toUpperCase()}*
 ─────────────────────
 
 📥 *Download*
@@ -21,85 +20,6 @@ Kirim foto/GIF + caption *stiker* → auto jadi stiker
 !kompres → Kompres ukuran foto 📦
 !qr [teks/link] → Buat QR Code dari teks/link
 Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️
-
-🎭 *Ganti Mode*
-!mode normal → Mode biasa
-!mode gombal → Mode gombal 💕
-!mode serious → Mode serius
-!mode story → Mode cerita
-
-🌤️ *Cuaca & Sholat*
-!cuaca [kota] → Cek cuaca kota
-!sholat [kota] → Jadwal sholat hari ini
-!sholat mode puasa → Tampilkan imsak & buka puasa
-!sholat mode normal → Sembunyikan imsak & buka puasa
-!sholat mode → Cek mode sholat saat ini
-
-📖 *Al-Quran*
-!quran → Penjelasan menu Quran
-!quran [surah] → Info surah
-!quran [surah] [ayat] → Baca ayat spesifik
-
-🔔 *Reminder Otomatis (Grup)*
-!reminder on [kota] → Aktifkan reminder sholat
-!reminder off → Nonaktifkan reminder
-!reminder → Cek status reminder
-
-📚 *Jadwal Kuliah*
-!jadwal → Lihat jadwal kuliah
-!jadwal on → Aktifkan reminder kuliah (grup)
-!jadwal off → Nonaktifkan reminder kuliah
-!jadwal tambah [hari] | [mulai] | [selesai] | [matkul]
-!jadwal ubah [no] | [hari] | [mulai] | [selesai] | [matkul]
-!jadwal hapus [no]
-!jadwal insight on -> Aktifkan fakta/quotes otomatis
-!jadwal insight off -> Matikan fakta/quotes otomatis
-!jadwal insight -> Cek status fakta/quotes otomatis
-Auto: Fakta IT terkini -2 menit sebelum reminder
-Auto: Quotes IT +2 menit setelah reminder
-
-📝 *Catatan Grup*
-!catat [isi] → Simpan catatan
-!notes → Lihat semua catatan
-!hapus note [no] → Hapus catatan
-
-📋 *To-Do List Pribadi*
-!todo → Lihat daftar tugas
-!todo tambah [tugas] → Tambah tugas
-!todo coret [no,no] → Tandai selesai banyak sekaligus
-!todo hapus [no,no] → Hapus tugas banyak sekaligus
-
-⏰ *Pengingat / Alarm*
-!ingatkan [waktu] | [pesan]
-
-🎓 *Info Akademik*
-!akademik → Lihat semua link
-!akademik [nama] → Cari link
-!akademik tambah [nama] | [desk] | [url] → Tambah link
-!akademik hapus [no/nama] → Hapus link
-
-📝 *Countdown Ujian*
-!ujian → Lihat countdown ujian
-!ujian tambah [nama] | [DD-MM-YYYY] → Tambah jadwal
-!ujian hapus [no] → Hapus jadwal ujian
-
-🎌 *Anime*
-!anime [judul] → Cari anime di Kusonime
-
-📿 *Zikir & Doa*
-!zikir → Menu zikir & doa
-!zikir pagi → Zikir pagi
-!zikir sore → Zikir sore
-!zikir harian → Zikir harian
-!zikir tidur → Doa sebelum tidur
-!zikir makan → Doa makan & minum
-!zikir random → Zikir acak
-!zikir auto on → Aktifkan auto zikir di chat ini
-!zikir auto off → Matikan auto zikir
-!zikir auto → Cek status & jadwal auto zikir
-
-👨‍💻 *GitHub Tracker*
-!github [username] → Cek profil GitHub
 
 ⚙️ *Lainnya*
 !stats → Statistik chat
