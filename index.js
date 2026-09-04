@@ -22,14 +22,14 @@ const OPTIONAL_ENV = {
 function validateEnvironment() {
     const missingRequired = REQUIRED_ENV.filter((key) => !process.env[key]);
     if (missingRequired.length) {
-        console.error('❌ Environment wajib belum diisi:', missingRequired.join(', '));
+        console.error('ERROR: Environment wajib belum diisi:', missingRequired.join(', '));
         console.error('Isi di file .env lalu jalankan ulang bot.');
         process.exit(1);
     }
 
     const missingOptional = Object.entries(OPTIONAL_ENV).filter(([key]) => !process.env[key]);
     if (missingOptional.length) {
-        console.warn('⚠️ Environment opsional belum diisi:');
+        console.warn('WARNING: Environment opsional belum diisi:');
         for (const [key, feature] of missingOptional) {
             console.warn(`- ${key} (${feature})`);
         }
@@ -49,12 +49,12 @@ if (ffmpegPath) {
     try {
         fs.accessSync(ffmpegPath);
         ffmpegAvailable = true;
-        console.log('✅ FFmpeg ditemukan:', ffmpegPath);
+        console.log('FFmpeg ditemukan:', ffmpegPath);
     } catch (e) {
-        console.warn('⚠️ FFmpeg tidak ditemukan di path:', ffmpegPath);
+        console.warn('WARNING: FFmpeg tidak ditemukan di path:', ffmpegPath);
     }
 } else {
-    console.warn('⚠️ FFmpeg-static tidak ter-load. Fitur stiker video akan gagal.');
+    console.warn('WARNING: FFmpeg-static tidak ter-load. Fitur stiker video akan gagal.');
 }
 
 // ============== ANTREAN TASK BERAT ==============
@@ -455,7 +455,7 @@ function getHealthStatus() {
 }
 
 function startHealthMonitor() {
-    console.log('🩺 Health monitor aktif (interval 10 menit)');
+    console.log('Health monitor aktif (interval 10 menit)');
     setInterval(() => {
         console.log(buildHealthLogLine({
             startedAt: STARTED_AT,
@@ -469,8 +469,8 @@ function startHealthMonitor() {
 }
 
 client.on('ready', () => {
-    console.log(`✅ Bot EsarFauzan siap! Mode: ${BOT_MODE}`);
-    console.log(`📊 Total chat: ${dataStore.learning.stats.totalChats}`);
+    console.log(`Bot EsarFauzan siap! Mode: ${BOT_MODE}`);
+    console.log(`Total chat: ${dataStore.learning.stats.totalChats}`);
     if (!healthMonitorStarted) {
         startHealthMonitor();
         healthMonitorStarted = true;
@@ -478,23 +478,23 @@ client.on('ready', () => {
 });
 
 client.on('auth_failure', msg => {
-    console.error('❌ Auth gagal, restart bot...', msg);
+    console.error('ERROR: Auth gagal, restart bot...', msg);
     process.exit(1);
 });
 
 let isReconnecting = false;
 
 client.on('disconnected', async (reason) => {
-    console.warn('⚠️ Bot disconnect:', reason);
+    console.warn('WARNING: Bot disconnect:', reason);
     if (isReconnecting) return;
     isReconnecting = true;
-    console.log('🔄 Mencoba reconnect dalam 10 detik...');
+    console.log('Mencoba reconnect dalam 10 detik...');
     setTimeout(async () => {
         try {
             await client.initialize();
             isReconnecting = false;
         } catch (err) {
-            console.error('❌ Reconnect gagal, restart process...', err);
+            console.error('ERROR: Reconnect gagal, restart process...', err);
             process.exit(1);
         }
     }, 10000);
@@ -502,12 +502,12 @@ client.on('disconnected', async (reason) => {
 
 // Handle uncaught errors agar PM2 bisa restart
 process.on('uncaughtException', (err) => {
-    console.error('❌ Uncaught Exception:', err);
+    console.error('ERROR: Uncaught Exception:', err);
     process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-    console.error('❌ Unhandled Rejection:', reason instanceof Error ? reason.stack : reason);
+    console.error('ERROR: Unhandled Rejection:', reason instanceof Error ? reason.stack : reason);
 });
 
 // Bersihkan memory: hapus history & cooldown user yang sudah lama tidak aktif
