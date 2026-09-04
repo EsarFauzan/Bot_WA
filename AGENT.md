@@ -1,140 +1,246 @@
 # AGENT.md — Bot WhatsApp (bot-wa)
 
-Dokumen ringkasan untuk membantu agent AI (dan pengembang lain) memahami
-project ini: **hasil analisis**, **perubahan yang sudah benar-benar dilakukan**,
-dan **hal-hal yang masih bermasalah / belum dikerjakan**.
+Dokumen ini adalah **single source of truth** untuk project ini. Agent AI
+maupun pengembang baru cukup membaca file ini untuk memahami arsitektur,
+konvensi, riwayat perubahan, dan kondisi terkini — tanpa perlu analisis ulang.
 
-> Catatan jujur: dokumen ini mencatat kondisi kode saat ini apa adanya.
-> Perubahan yang belum benar-benar diterapkan ke file TIDAK ditulis seolah sudah selesai.
+> Aturan jujur: dokumen ini mencerminkan kondisi kode yang **benar-benar ada**
+> sekarang. Fitur/modul yang sudah dihapus ditulis sebagai "sudah dihapus",
+> bukan seolah masih ada.
 
 ---
 
 ## 1. Ringkasan Project
 
-Bot WhatsApp berbasis **Node.js (CommonJS)** memakai `whatsapp-web.js` + Puppeteer.
-Mode berjalan: **command-only** (hanya merespons pesan yang diawali `!`, plus
-caption media `stiker`/`sticker` yang dipetakan ke `!stiker`).
+Bot WhatsApp pribadi (nama internal: **EsarFauzan**) berbasis
+**Node.js (CommonJS)** + `whatsapp-web.js` + Puppeteer.
 
-- Entry point: `index.js` (client, router command, helper media)
-- Struktur folder: `src/commands`, `src/messages`, `src/monitoring`, `src/storage`, `src/utils`
-- Persistensi: file JSON di root project (tanpa database)
-- Test: `node:test`, saat ini **29 test lolos** (`npm test`)
-- Dependency `whatsapp-web.js` di-pin ke fork `lindionez` (fix bug `r: r`
-  untuk chat `@lid`; PR resmi #201840 belum dirilis di npm).
+- **Mode berjalan: command-only** — bot hanya merespons pesan yang diawali `!`.
+  Tidak ada percakapan AI bebas, tidak ada auto-reply selain command.
+- Entry point: `index.js` (±577 baris) — client WhatsApp, helper media (stiker,
+  ffmpeg, yt-dlp, clipdrop), router command, health monitor.
+- Persistensi: file JSON di root project (tanpa database).
+- Test: `node:test` — **29/29 lolos** (`npm test`).
+- Target VPS RAM kecil (1GB) → banyak keputusan desain demi hemat CPU/RAM.
 
----
-
-## 2. Hasil Analisis
-
-### 2.1 Struktur yang Ada
-```
-bot-wa/
-├─ index.js                      # entry: client, router command, helper media
-├─ package.json                  # CommonJS, "type": "commonjs"
-├─ .env                          # (ada di root; sudah masuk .gitignore)
-├─ *.json                        # file data lama: reminders, notes, dll. (sisa)
-└─ src/
-   ├─ commands/
-   │  ├─ basicCommands.js          # stats, health, reset, help/menu
-   │  ├─ mediaCommands.js          # stiker, storyin, download, kompres, rmbg, upscale, qr (pakai jobQueue + rateLimiter)
-   │  └─ createCommandRouter.js    # orkestrator (chain handler)
-   ├─ messages/
-   │  └─ helpMenu.js               # daftar fitur yang dipertahankan
-   ├─ monitoring/health.js
-   ├─ storage/
-   │  ├─ learningDataStore.js       # (lama) khusus data learning
-   │  ├─ jsonStore.js               # load/save atomic + backup
-   │  └─ dataStore.js               # konsolidasi state & persistensi (persist per domain)
-   └─ utils/
-      ├─ safeTyping.js              # indikator typing yang aman (abaikan error @lid)
-      ├─ timeContext.js             # helper zona waktu (tidak dipakai handler aktif)
-      ├─ timeHelpers.js             # addMinutesToTime, pickRandom (tidak dipakai handler aktif)
-      └─ jobQueue.js                # antrean job (enqueue → Promise) + rate limiter
-```
-
-### 2.2 Fitur yang Dipertahankan
-- 📥 **Download**: `!ig [link]`, `!tiktok [link]`, `!yt [link]`, `!yt audio [link]`
-- 🎬 **Story**: `!storyin` (reply/send video dokumen → optimize HD)
-- 🖼️ **Stiker & Edit Foto**: caption `stiker`/`sticker` → auto stiker; `!stiker`,
-  `!rmbg`, `!upscale`, `!kompres`, `!qr [teks/link]`, foto + `!qr`
-- ⚙️ **Lainnya**: `!stats`, `!health`, `!reset`, `!menu`
-
-### 2.3 Fitur yang Sudah Dihapus (2026-09)
-- Command & handler: `!mode*`, `!cuaca`, `!sholat`, `!quran`, `!reminder`,
-  `!jadwal*`, `!catat`/`!notes`, `!todo`, `!ingatkan`, `!akademik`, `!ujian`,
-  `!anime`, `!zikir`, `!github` → file `reminderJadwalCommands.js`,
-  `utilityCommands.js`, `productivityCommands.js` dihapus.
-- Scheduler otomatis (prayer reminder, jadwal kuliah + insight IT, auto zikir)
-  dihapus → folder `src/schedulers/` tidak ada lagi.
-- Modul pendukung yang hanya dipakai fitur di atas ikut dihapus: `itContent.js`,
-  `jadwalKuliahStore.js`, test-nya, dan dependency `node-schedule`.
-- `index.js` tidak lagi menjalankan scheduler maupun menyimpan state domain
-  reminders/jadwal/sholat/zikir/notes/todo/ujian/akademik; dataStore tetap memuat
-  file JSON lama namun hanya domain `learning` yang dipakai handler aktif.
-
-### 2.4 Temuan Penting (dari analisis kode)
-- **Handler aktif sederhana**: `client.on('message')` di `index.js` hanya memproses
-  command yang diawali `!`; caption media `stiker`/`sticker` dipetakan ke `!stiker`.
-- **Bug whatsapp-web.js untuk `@lid`**: error minified `r: r` pada `downloadMedia`,
-  `getChat`, typing untuk nomor format baru. Diatasi dengan (1) helper
-  `safeTyping()` yang mengabaikan error typing, dan (2) mem-pin dependency ke
-  fork `lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback`.
-- **Task berat memakai antrean**: stiker video & download lewat `mediaJobQueue`
-  (concurrency 1) + `mediaRateLimiter` (cooldown 20 detik per user per command).
-- **Rate limit global**: satu `cooldowns` map dengan jeda 2 detik per user.
-
----
-
-## 3. Perubahan yang Sudah Dilakukan (terverifikasi)
-
-> Yang tercantum di bawah ini adalah file yang **benar-benar dibuat/diubah**
-> dan sudah dicek bisa di-`require` / dijalankan.
-
-### 3.1 Perubahan Pemangkasan Fitur (terbaru)
-- `src/commands/createCommandRouter.js`: hanya me-wire `basicCommands` + `mediaCommands`.
-- `src/commands/basicCommands.js`: hapus `!mode*`, sisakan `!stats`, `!health`,
-  `!reset`, `!menu`/`!help` (tanpa dependency `userModes`).
-- `src/messages/helpMenu.js`: menu ramping hanya fitur yang dipertahankan.
-- `src/monitoring/health.js`: baris reminder/jadwal/notes/todos/ujian/scheduler dihapus.
-- `index.js`: hapus require & startup scheduler, alias state domain yang dihapus,
-  wrapper `save*`, `userModes`, `schedule`, dan dependency `node-schedule`.
-- File dihapus: `src/commands/{reminderJadwalCommands,utilityCommands,productivityCommands}.js`,
-  `src/schedulers/*`, `src/messages/itContent.js`, `src/storage/jadwalKuliahStore.js`,
-  `tests/{itContent,jadwalKuliahStore}.test.js`.
-- `tests/basicCommands.test.js` ditulis ulang untuk `!stats`/`!health`/`!menu`/`!reset`.
-
-### 3.2 Status Verifikasi
-- `node --check` lolos untuk `index.js` dan semua file command/menu/health.
-- `npm test` → **29/29 lolos**.
-
----
-
-## 4. Yang Masih Bermasalah / Belum Dikerjakan
-
-### 4.1 Catatan Berkas Data
-- File `*.json` data milik fitur yang dihapus (reminders, jadwal, notes,
-  akademik, ujian, sholat, zikir, dll.) sudah **dihapus dari repo** (git rm).
-  `dataStore` masih mendefinisikan domain-nya dengan fallback kosong, jadi bot
-  tetap bisa jalan tanpa file tersebut.
-- `learned_data.json` (statistik `!stats`) dan `chat_logs.json` tetap ada di
-  disk tapi masuk `.gitignore` (tidak di-commit).
-
-### 4.2 Catatan Tes
-- Test tersisa: `basicCommands`, `dataStore` (smoke read-only), `jobQueue`,
-  `jsonStore`, `learningDataStore`, `timeContext`, `timeHelpers`.
-- `dataStore` sengaja hanya di-smoke-test (read-only) karena menulis file data asli.
-
-### 4.3 Masih Bisa Ditingkatkan (opsional)
-- `!ig` anonim sering kena rate-limit Instagram (`login required`) — butuh cookie
-  login via yt-dlp bila mau andal.
-- `timeContext.js` / `timeHelpers.js` kini tidak dipakai handler aktif — bisa dihapus.
-- Begitu `whatsapp-web.js` resmi merilis fix `@lid`, kembalikan dependency ke versi npm.
-
----
-
-## 5. Cara Menjalankan
+### Quickstart
 ```bash
 npm install      # pasang dependensi
-npm start        # jalankan bot (node index.js)
-npm test         # jalankan test (node --test tests/*.test.js)
+npm start        # jalankan bot (node index.js) — akan muncul QR untuk scan
+npm test         # node --test tests/*.test.js (29 test)
 ```
+
+### Cara update di VPS (ringkas)
+```bash
+cd ~/Bot_WA
+git pull
+npm install          # hanya jika package.json berubah
+pm2 restart bot-wa
+```
+File `Cara Update Bot.md` / `Cara Update Bot.txt` di root memuat panduan VPS
+yang lebih lengkap.
+
+---
+
+## 2. Arsitektur Saat Ini
+
+```
+bot-wa/
+├─ index.js                        # entry: client, helper media, router, health
+├─ package.json                    # CommonJS ("type": "commonjs")
+├─ .env                            # di root, masuk .gitignore (lihat §7)
+├─ AGENT.md                        # dokumen ini
+├─ Cara Update Bot.md / .txt       # panduan deploy VPS
+├─ src/
+│  ├─ commands/
+│  │  ├─ basicCommands.js          # !stats, !health, !reset, !menu/!help
+│  │  ├─ mediaCommands.js          # stiker, storyin, download, rmbg, upscale, qr, kompres
+│  │  └─ createCommandRouter.js    # orkestrator: panggil basic → media, return saat handled
+│  ├─ messages/
+│  │  └─ helpMenu.js               # teks menu !menu (tanpa emoji)
+│  ├─ monitoring/
+│  │  └─ health.js                 # buildHealthReport / buildHealthLogLine
+│  ├─ storage/
+│  │  ├─ dataStore.js              # state in-memory per domain + persist(domain) atomic
+│  │  ├─ jsonStore.js              # loadJSON/saveJSON atomic (.tmp → rename, backup .bak)
+│  │  └─ learningDataStore.js      # (modul lama, sudah tidak dipakai handler aktif)
+│  └─ utils/
+│     ├─ jobQueue.js               # antrean job + rate limiter (dipakai mediaCommands)
+│     ├─ safeTyping.js             # indikator "typing" yang mengabaikan error (chat @lid)
+│     ├─ timeContext.js            # helper zona waktu — TIDAK dipakai handler aktif
+│     └─ timeHelpers.js            # addMinutesToTime, pickRandom — TIDAK dipakai handler aktif
+└─ tests/
+   ├─ basicCommands.test.js
+   ├─ dataStore.test.js            # smoke read-only
+   ├─ jobQueue.test.js
+   ├─ jsonStore.test.js
+   ├─ learningDataStore.test.js
+   ├─ timeContext.test.js
+   └─ timeHelpers.test.js
+```
+
+> Folder `src/schedulers/` **sudah dihapus** (lihat §6). Jangan membuat ulang
+> scheduler kecuali diminta.
+
+### Alur pesan (index.js `client.on('message')`)
+1. Lewati jika `msg.type` bukan chat/image/video/document/sticker/ptt/audio.
+2. `caption media` dibersihkan dari mention; bila caption = `stiker`/`sticker`
+   (dan ada media), caption dipetakan ke `!stiker`.
+3. Bila teks tidak diawali `!` → abaikan (command-only).
+4. Rate limit global 2 detik per user (map `cooldowns`, kunci per pengirim).
+5. Catat ke statistik (`stats.totalChats` / `lastActive`, tersimpan ke
+   `learned_data.json`), lalu kirim ke `createCommandRouter`.
+6. Error apa pun ditangkap: log stack + balas "Command gagal diproses." —
+   tidak pernah mematikan proses.
+
+### Handler yang aktif
+- **createCommandRouter** memanggil berurutan: `basicCommands` lalu
+  `mediaCommands`. Handler pertama yang `return true` menghentikan rantai.
+- **basicCommands**: `!stats`, `!health`, `!reset`, `!menu`/`!help`.
+- **mediaCommands**: seluruh command media, task berat lewat
+  `runHeavy(key, fn)` → antrean `jobQueue` (concurrency 1) + rate limiter
+  (cooldown 20 detik per user per command). Bila kena cooldown, user diberi
+  tahu menunggu N detik.
+
+---
+
+## 3. Daftar Command (yang ADA sekarang)
+
+| Command | Fungsi | Catatan |
+|---|---|---|
+| `!menu` / `!help` | Tampilkan menu | teks sama |
+| `!stats` | Statistik chat | baca `learned_data.json` |
+| `!health` | Status bot (uptime, memori, dst.) | dari `src/monitoring/health.js` |
+| `!reset` | Reset riwayat per user | hapus `history[uid]` |
+| `!stiker` | Reply/kirim foto-GIF-video → stiker | caption `stiker` juga auto-maps ke sini |
+| `!storyin` | Reply video dokumen → video HD untuk story | max 50MB |
+| `!ig [link]` | Download reels/post IG | anonim, sering kena rate-limit IG |
+| `!tiktok [link]` | Download video TikTok | |
+| `!yt [link]` | Download video YouTube | |
+| `!yt audio [link]` | Download MP3 YouTube | |
+| `!rmbg` | Hapus background foto → stiker transparan | butuh `CLIPDROP_API_KEY` |
+| `!upscale` | Perbesar kualitas foto (maks 4x / 2048px) | butuh `CLIPDROP_API_KEY` |
+| `!qr [teks/link]` | Buat QR dari teks/link | |
+| `!qr` (kirim/reply foto) | Buat QR dari gambar | butuh `IMGBB_API_KEY` |
+| `!kompres` | Kompres ukuran foto | sharp |
+
+### Konvensi penting (JANGAN dilanggar)
+- **Semua teks balasan bot — termasuk menu, caption media, dan console log —
+  bebas emoji.** Ini keputusan user (commit 6638164 & 3123608). Console log
+  memakai label `ERROR:` / `WARNING:` sebagai pengganti emoji. Jangan
+  menambahkan emoji ke string apa pun yang dikirim bot atau dicetak ke log.
+- Bahasa balasan: Indonesia informal (mis. "Bentar, sy optimize videonya
+  dulu. Sabar yaa..."). Pertahankan gaya itu saat mengedit teks.
+- Semua balasan/state lewat objek `ctx = { cmd, msg, uid }`; `cmd` sudah
+  di-`toLowerCase().trim()`.
+- Task berat (ffmpeg/download/API) **wajib** lewat `runHeavy`, jangan langsung.
+
+---
+
+## 4. Dependency & Environment
+
+Dependencies aktif (`package.json`):
+`axios, dotenv, ffmpeg-static, form-data, qrcode, qrcode-terminal, sharp,
+whatsapp-web.js, yt-dlp-exec`.
+
+> `whatsapp-web.js` di-pin ke fork GitHub
+> `lindionez/whatsapp-web.js#feat/fix-_serialized-id-fallback` (bukan versi npm).
+> Alasan: bug wwebjs resmi — lihat §6 commit `bed4ac0`.
+
+Tidak ada env wajib (`REQUIRED_ENV = []`). Env opsional (dicek saat start,
+hanya warning bila kosong):
+
+| Key | Dipakai untuk |
+|---|---|
+| `CLIPDROP_API_KEY` | `!rmbg` & `!upscale` |
+| `IMGBB_API_KEY` | `!qr` dari gambar (unggah foto) |
+| `BOT_TIMEZONE` | default `Asia/Makassar` (health report) |
+
+Catatan: file `.env` di root (sudah masuk `.gitignore`).
+
+---
+
+## 5. Persistensi Data
+
+- `dataStore.js` = satu lapis state in-memory + persist per domain (atomic
+  via `jsonStore`). Domain yang **masih dipakai**: `learning`
+  (`learned_data.json`, untuk `!stats` & health).
+- **Domain mati masih didefinisikan di `dataStore.js`** (reminders, jadwal,
+  jadwalInsight, sholatMode, zikirAuto, notes, todo, ujian, akademik,
+  jadwalInsightState, zikirAutoState, chatLog) beserta path filenya. File JSON
+  untuk domain tersebut **sudah dihapus dari repo** (git rm, commit 6638164)
+  dan tidak dipakai handler apa pun. `loadJSON` punya fallback, jadi bot tetap
+  aman. **Cleanup opsional**: hapus domain mati + FILES + save-fn-nya dari
+  `dataStore.js`, lalu sesuaikan `tests/dataStore.test.js`.
+- `.gitignore` mencakup `.env`, `learned_data.json`, `chat_logs.json`, dan
+  file data fitur lama + `*.tmp`/`*.bak` + file download sementara
+  (`ig_tmp_*.mp4`, `tt_tmp_*.mp4`, `yt_tmp_*.mp4`). Jangan commit file data.
+
+---
+
+## 6. Riwayat Perubahan (commit → efek)
+
+Urutan commit terbaru di `main`:
+
+1. **91f33ca** — Logging error penuh (stack trace) di handler command, untuk
+   debug error `r` misterius.
+2. **0104146** — Fix: semua pemanggilan indikator typing diganti `safeTyping()`
+   (mengabaikan error `getChat`/`sendStateTyping` pada chat format `@lid`).
+   Sebelumnya error kosmetik ini menggagalkan seluruh command media.
+3. **bed4ac0** — Fix akar masalah `r: r`: `downloadMedia`/typing gagal untuk
+   chat `@lid` karena update WhatsApp Web mengganti nama properti internal
+   message-id. Solusi: pin `whatsapp-web.js` ke fork `lindionez` yang memuat
+   backport fix `_normalizeId` + fallback. **Kembalikan ke npm bila fix resmi
+   dirilis** (PR wwebjs #201840 masih open saat commit ini dibuat).
+4. **44d99ca** — **Pemangkasan fitur besar-besaran** (atas permintaan user):
+   bot hanya menyisakan Download (`!ig`/`!tiktok`/`!yt`), Story (`!storyin`),
+   Stiker & Edit Foto (`!stiker`/`!rmbg`/`!upscale`/`!kompres`/`!qr`), dan
+   `!stats`/`!health`/`!reset`/`!menu`.
+   - Dihapus file handler: `reminderJadwalCommands.js`, `utilityCommands.js`,
+     `productivityCommands.js`.
+   - Dihapus semua scheduler: folder `src/schedulers/` (prayer reminder,
+     jadwal kuliah + insight IT, auto zikir).
+   - Dihapus modul pendukung: `src/messages/itContent.js`,
+     `src/storage/jadwalKuliahStore.js`, beserta test-nya.
+   - Dihapus dependency `node-schedule` (hanya dipakai scheduler & `!ingatkan`).
+   - `index.js` tidak lagi memuat scheduler, alias state domain mati, wrapper
+     `save*`, `userModes`, `!mode*`; `basicCommands` tanpa mode;
+     `helpMenu` ramping; `health.js` tanpa baris reminder/jadwal/notes/todos.
+5. **6638164** — Semua emoji dihapus dari **balasan bot** (msg.reply, caption,
+   menu) + kalimat dirapikan; **git rm** 11 file JSON data fitur lama
+   (reminders, jadwal_groups, jadwal_insight_groups/state, jadwal_kuliah,
+   notes, akademik, ujian, sholat_modes, zikir_auto_targets/state).
+6. **3123608** — Emoji dihapus dari **console log** `index.js`, diganti label
+   `ERROR:`/`WARNING:`.
+
+Fitur yang sudah dihapus (jangan dihidupkan tanpa permintaan eksplisit):
+`!mode*`, `!cuaca`, `!sholat*`, `!quran`, `!reminder*`, `!jadwal*`,
+`!catat`/`!notes`, `!todo*`, `!ingatkan`, `!akademik*`, `!ujian*`, `!anime`,
+`!zikir*`, `!github`, dan semua kiriman otomatis terjadwal.
+
+---
+
+## 7. Yang Masih Bermasalah / Dapat Ditingkatkan
+
+1. **`!ig` anonim tidak andal** — Instagram sering memblokir unduhan anonim
+   yt-dlp (`rate-limit reached or login required`). Perbaikan membutuhkan
+   cookie login (via yt-dlp `--cookies`). Bukan bug kode.
+2. **Data JSON lama** — file data fitur yang dihapus sudah tidak ada di repo,
+   tapi `dataStore.js` masih mendefinisikan domain + path-nya (dead code).
+   Bersihkan bila sempat (lihat §5).
+3. **Modul yatim**: `src/utils/timeContext.js` & `src/utils/timeHelpers.js`
+   (plus test-nya) tidak dipakai handler aktif sejak scheduler dihapus — bisa
+   dihapus; begitu juga `src/storage/learningDataStore.js` (modul lama).
+   Pengecualian: pertahankan bila akan dipakai lagi.
+4. **`chatLog`** domain tidak pernah ditulis handler aktif (sisa lama).
+5. **whatsapp-web.js fork** — bersifat sementara sampai fix `@lid` dirilis di
+   npm resmi.
+
+---
+
+## 8. Cek Sebelum Menganggap Selesai
+
+- `node --check index.js` dan semua file yang diubah.
+- `npm test` → harap **29/29 lolos**.
+- Pastikan tidak ada emoji di string yang dikirim bot / dicetak ke log.
+- Jangan menambah command/feature di luar daftar §3 tanpa konfirmasi user.
