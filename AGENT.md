@@ -112,9 +112,12 @@ bot-wa/
 ## 4. Yang Masih Bermasalah / Belum Dikerjakan
 
 ### 4.1 Catatan Berkas Data
-- File `*.json` data lama (reminders, jadwal, notes, dll.) masih ada di root dan
-  di-load `dataStore`, tapi tidak lagi dipakai command/scheduler. Aman dibiarkan
-  atau dihapus manual; pastikan tidak di-commit.
+- File `*.json` data milik fitur yang dihapus (reminders, jadwal, notes,
+  akademik, ujian, sholat, zikir, dll.) sudah **dihapus dari repo** (git rm).
+  `dataStore` masih mendefinisikan domain-nya dengan fallback kosong, jadi bot
+  tetap bisa jalan tanpa file tersebut.
+- `learned_data.json` (statistik `!stats`) dan `chat_logs.json` tetap ada di
+  disk tapi masuk `.gitignore` (tidak di-commit).
 
 ### 4.2 Catatan Tes
 - Test tersisa: `basicCommands`, `dataStore` (smoke read-only), `jobQueue`,

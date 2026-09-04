@@ -5,7 +5,7 @@ function createBasicCommandsHandler(deps) {
         const { cmd, msg, uid } = ctx;
 
         if (cmd === '!stats') {
-            msg.reply(`📊 Total chat: ${stats.totalChats}\nTerakhir aktif: ${stats.lastActive || '-'}`);
+            msg.reply(`Total chat: ${stats.totalChats}\nTerakhir aktif: ${stats.lastActive || '-'}`);
             return true;
         }
 
@@ -19,7 +19,7 @@ function createBasicCommandsHandler(deps) {
 
         if (cmd === '!reset') {
             history.delete(uid);
-            msg.reply('🔄 Percakapan direset!');
+            msg.reply('Percakapan direset.');
             return true;
         }
 

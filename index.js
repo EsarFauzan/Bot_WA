@@ -230,7 +230,7 @@ async function kirimStiker(client, userId, msg, stikerMedia) {
         stickerName: 'EFstiker',
         stickerAuthor: 'G00Dbooy'
     });
-    msg.reply('Nih stikernya😹');
+    msg.reply('Nih stikernya.');
 }
 
 // ============== OPTIMIZE VIDEO ==============

@@ -39,7 +39,7 @@ function createMediaCommandsHandler(deps) {
     }
 
     function heavyBlockedReply(remain) {
-        return `Masih ada proses berat sebelumnya ee, coba lagi dalam ${remain} detik 😹`;
+        return `Masih ada proses berat yang berjalan. Coba lagi dalam ${remain} detik.`;
     }
 
     return async function handleMediaCommands(ctx) {
@@ -57,15 +57,15 @@ function createMediaCommandsHandler(deps) {
                 }
                 const stikerMedia = stikerGate.result;
                 if (stikerMedia?.error) {
-                    msg.reply(`Gagal sy buat stikernya\n${stikerMedia.error}`);
+                    msg.reply(`Gagal membuat stikernya.\n${stikerMedia.error}`);
                 } else if (stikerMedia) {
                     await kirimStiker(client, msg.from, msg, stikerMedia);
                 } else {
-                    msg.reply('Aiih gagal nih, coba lagi yaa 😹');
+                    msg.reply('Aiih, gagal nih. Coba lagi yaa.');
                 }
             } catch (e) {
                 console.error('Error stiker:', e);
-                msg.reply('Gagal sy buat stikernya 😹');
+                msg.reply('Gagal membuat stikernya. Coba lagi yaa.');
             }
         } else if (msg.hasQuotedMsg) {
             try {
@@ -84,14 +84,14 @@ function createMediaCommandsHandler(deps) {
                     } else if (stikerMedia) {
                         await kirimStiker(client, msg.from, msg, stikerMedia);
                     } else {
-                        msg.reply('Aiih gagal nih, coba lagi yaa 😹');
+                        msg.reply('Aiih, gagal nih. Coba lagi yaa.');
                     }
                 } else {
-                    msg.reply('Reply-nya bukan foto/GIF/video. Coba reply media dulu 😹');
+                    msg.reply('Reply-nya bukan foto/GIF/video. Coba reply media dulu yaa.');
                 }
             } catch (e) {
                 console.error('Error stiker:', e);
-                msg.reply('Gagal sy buat stikernya 😹');
+                msg.reply('Gagal membuat stikernya. Coba lagi yaa.');
             }
         } else {
             msg.reply('Cara pakai:\n1. Kirim foto/GIF/video + caption *!stiker*\n2. Atau reply foto/GIF/video dengan *!stiker*');
@@ -111,7 +111,7 @@ function createMediaCommandsHandler(deps) {
         }
 
         if (!targetMsg) {
-            await msg.reply('Cara pakai: Reply ke video dokumen yang mau dijadiin story, atau kirim langsung video/dokumen dgn caption *!storyin* 🤭');
+            await msg.reply('Cara pakai: Reply ke video dokumen yang mau dijadikan story, atau kirim langsung video/dokumen dengan caption *!storyin*.');
             return true;
         }
 
@@ -123,19 +123,19 @@ function createMediaCommandsHandler(deps) {
                 mime.startsWith('video/') || /\.(mp4|mkv|mov|avi|3gp|webm)$/i.test(filename);
 
             if (!isVideoDoc) {
-                await msg.reply('Nda bisa yaa, harus video atau dokumen video 😹');
+                await msg.reply('Nda bisa yaa, harus video atau dokumen video.');
                 return true;
             }
 
             const fileSize = targetMsg._data?.size || targetMsg._data?.fileSizeBytes || 0;
             if (fileSize > 50 * 1024 * 1024) {
-                await msg.reply('Maaf ee, videonya kegedean 😹 Maks 50MB yaa.\nKalo mau, kompres dlu di aplikasi lain baru kirim lagi.');
+                await msg.reply('Maaf, videonya kegedean. Maks 50MB yaa.\nKalau mau, kompres dulu di aplikasi lain baru kirim lagi.');
                 return true;
             }
 
             await safeTyping(msg);
             
-            await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
+            await msg.reply('Oke, bentar sy optimize videonya dulu. Sabar yaa...');
 
             const storyGate = await runHeavy(`storyin:${uid}`, async () => {
                 const media = await targetMsg.downloadMedia();
@@ -162,18 +162,18 @@ function createMediaCommandsHandler(deps) {
 
             const outputBuffer = storyGate.result;
             if (!outputBuffer) {
-                await msg.reply('Gagal download videonya 😹 coba lagi yaa');
+                await msg.reply('Gagal download videonya. Coba lagi yaa.');
                 return true;
             }
 
             const optimizedMedia = new MessageMedia('video/mp4', outputBuffer.toString('base64'), 'video.mp4');
-            await msg.reply('Nih videonya 🤭 kualitas tinggi, tinggal download trus upload ke story!');
+            await msg.reply('Nih videonya, kualitas tinggi. Tinggal download terus upload ke story!');
             await client.sendMessage(uid, optimizedMedia, {
                 sendMediaAsDocument: false
             });
         } catch (err) {
             console.error('Error !storyin:', err);
-            msg.reply('Aduh error sy 😹 coba lagi yaa');
+            msg.reply('Aduh, error. Coba lagi yaa.');
         }
 
         return true;
@@ -182,13 +182,13 @@ function createMediaCommandsHandler(deps) {
     if (cmd.startsWith('!ig ')) {
         const link = msg.body.trim().split(' ').slice(1).join('').trim();
         if (!link || !link.includes('instagram.com')) {
-            await msg.reply('Format salah 😹\nCara pakai: *!ig [link reels/post IG]*\nContoh:\n!ig https://www.instagram.com/reels/xxxxx/');
+            await msg.reply('Format salah.\nCara pakai: *!ig [link reels/post IG]*\nContoh:\n!ig https://www.instagram.com/reels/xxxxx/');
             return true;
         }
         try {
             await safeTyping(msg);
             
-            await msg.reply('Oke bentar sy download dulu reelsnya 🤭 sabar yaa...');
+            await msg.reply('Oke, bentar sy download dulu reelsnya. Sabar yaa...');
 
             const igGate = await runHeavy(`ig:${uid}`, async () => {
                 const buffer = await downloadIGVideo(link);
@@ -214,18 +214,18 @@ function createMediaCommandsHandler(deps) {
 
             const igOutput = igGate.result;
             if (!igOutput) {
-                await msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link bener & publik\n2. Akun IG tidak private\nCoba lagi yaa!');
+                await msg.reply('Gagal download. Cek lagi linknya:\n1. Link bener & publik\n2. Akun IG tidak private\nCoba lagi yaa!');
                 return true;
             }
 
             const videoMedia = new MessageMedia('video/mp4', igOutput.toString('base64'), 'reels.mp4');
             await client.sendMessage(uid, videoMedia, {
                 sendMediaAsDocument: false,
-                caption: 'Nih reelsnya 🤭 kualitas HD!'
+                caption: 'Nih reelsnya, kualitas HD!'
             });
         } catch (err) {
             console.error('Error !ig:', err);
-            msg.reply('Aduh error sy 😹 coba lagi yaa');
+            msg.reply('Aduh, error. Coba lagi yaa.');
         }
 
         return true;
@@ -239,13 +239,13 @@ function createMediaCommandsHandler(deps) {
     if (cmd.startsWith('!tiktok ')) {
         const link = msg.body.trim().split(' ').slice(1).join('').trim();
         if (!link || !link.includes('tiktok.com')) {
-            await msg.reply('Format salah 😹\nCara pakai: *!tiktok [link TikTok]*\nContoh:\n!tiktok https://www.tiktok.com/@user/video/xxxx');
+            await msg.reply('Format salah.\nCara pakai: *!tiktok [link TikTok]*\nContoh:\n!tiktok https://www.tiktok.com/@user/video/xxxx');
             return true;
         }
         try {
             await safeTyping(msg);
             
-            await msg.reply('Oke bentar sy download dulu TikToknya 🤭 sabar yaa...');
+            await msg.reply('Oke, bentar sy download dulu TikToknya. Sabar yaa...');
 
             const ttGate = await runHeavy(`tiktok:${uid}`, async () => {
                 const buffer = await downloadTikTokVideo(link);
@@ -271,18 +271,18 @@ function createMediaCommandsHandler(deps) {
 
             const ttOutput = ttGate.result;
             if (!ttOutput) {
-                await msg.reply('Aiih gagal download sy 😹\nCek lagi linknya:\n1. Link harus publik\n2. Bukan live\nCoba lagi yaa!');
+                await msg.reply('Gagal download. Cek lagi linknya:\n1. Link harus publik\n2. Bukan live\nCoba lagi yaa!');
                 return true;
             }
 
             const videoMedia = new MessageMedia('video/mp4', ttOutput.toString('base64'), 'tiktok.mp4');
-            await msg.reply('Nih videonya 🤭 kualitas HD!');
+            await msg.reply('Nih videonya, kualitas HD!');
             await client.sendMessage(uid, videoMedia, {
                 sendMediaAsDocument: false
             });
         } catch (err) {
             console.error('Error !tiktok:', err);
-            msg.reply('Aduh error sy 😹 coba lagi yaa');
+            msg.reply('Aduh, error. Coba lagi yaa.');
         }
 
         return true;
@@ -306,13 +306,13 @@ function createMediaCommandsHandler(deps) {
         }
 
         if (!link || !link.includes('youtu')) {
-            await msg.reply('Format salah 😹\nCara pakai:\n*!yt [link]* → download video\n*!yt audio [link]* → download MP3\n\nContoh:\n!yt https://youtu.be/xxxxx\n!yt audio https://youtu.be/xxxxx');
+            await msg.reply('Format salah.\nCara pakai:\n*!yt [link]* → download video\n*!yt audio [link]* → download MP3\n\nContoh:\n!yt https://youtu.be/xxxxx\n!yt audio https://youtu.be/xxxxx');
             return true;
         }
         try {
             await safeTyping(msg);
             
-            await msg.reply(`Oke bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'} 🤭 sabar yaa...`);
+            await msg.reply(`Oke, bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'}. Sabar yaa...`);
 
             const ytGate = await runHeavy(`yt:${uid}`, async () => {
                 const buffer = await downloadYouTubeVideo(link, audioOnly);
@@ -342,7 +342,7 @@ function createMediaCommandsHandler(deps) {
 
             const ytResult = ytGate.result;
             if (!ytResult) {
-                await msg.reply('Aiih gagal download sy 😹\nCek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi yaa!');
+                await msg.reply('Gagal download. Cek lagi:\n1. Link YouTube valid\n2. Video tidak private\n3. Coba link pendek (youtu.be)\nCoba lagi yaa!');
                 return true;
             }
 
@@ -350,18 +350,18 @@ function createMediaCommandsHandler(deps) {
                 const audioMedia = new MessageMedia('audio/mpeg', ytResult.buffer.toString('base64'), 'audio.mp3');
                 await client.sendMessage(uid, audioMedia, {
                     sendMediaAsDocument: true,
-                    caption: 'Nih MP3nya 🎵'
+                    caption: 'Nih MP3nya.'
                 });
             } else {
                 const videoMedia = new MessageMedia('video/mp4', ytResult.buffer.toString('base64'), 'youtube.mp4');
-                await msg.reply('Nih videonya 🤭 kualitas HD!');
+                await msg.reply('Nih videonya, kualitas HD!');
                 await client.sendMessage(uid, videoMedia, {
                     sendMediaAsDocument: false
                 });
             }
         } catch (err) {
             console.error('Error !yt:', err);
-            msg.reply('Aduh error sy 😹 coba lagi yaa');
+            msg.reply('Aduh, error. Coba lagi yaa.');
         }
 
         return true;
@@ -375,7 +375,7 @@ function createMediaCommandsHandler(deps) {
     if (cmd === '!rmbg') {
         const apiKey = process.env.CLIPDROP_API_KEY;
         if (!apiKey) {
-            await msg.reply('API key Clipdrop belum diset 😹');
+            await msg.reply('API key Clipdrop belum diset.');
             return true;
         }
 
@@ -387,28 +387,28 @@ function createMediaCommandsHandler(deps) {
                 if (quoted.hasMedia && (quoted.type === 'image' || quoted.type === 'sticker')) {
                     targetMsg = quoted;
                 } else {
-                    await msg.reply('Reply-nya harus gambar atau stiker yaa 😹');
+                    await msg.reply('Reply-nya harus gambar atau stiker yaa.');
                     return true;
                 }
             } catch (e) {
-                await msg.reply('Gagal baca pesan yang di-reply 😹');
+                await msg.reply('Gagal baca pesan yang di-reply.');
                 return true;
             }
         } else if (msg.hasMedia && (msg.type === 'image' || msg.type === 'sticker')) {
             targetMsg = msg;
         } else {
-            await msg.reply('Cara pakai:\n• Kirim foto + caption *!rmbg*\n• Atau *reply foto/stiker* dengan *!rmbg*\n\n_Hasil dikirim sebagai stiker transparan_ 🎨\n_Gratis 100 gambar/bulan_');
+            await msg.reply('Cara pakai:\n• Kirim foto + caption *!rmbg*\n• Atau *reply foto/stiker* dengan *!rmbg*\n\n_Hasil dikirim sebagai stiker transparan_\n_Gratis 100 gambar/bulan_');
             return true;
         }
 
         try {
             await safeTyping(msg);
             
-            await msg.reply('Bentar sy hapus backgroundnya dulu 🤭 sabar yaa...');
+            await msg.reply('Bentar, sy hapus backgroundnya dulu. Sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
             if (!media) {
-                await msg.reply('Gagal download gambarnya 😹 coba jo lagi nanti');
+                await msg.reply('Gagal download gambarnya. Coba lagi nanti.');
                 return true;
             }
 
@@ -437,19 +437,19 @@ function createMediaCommandsHandler(deps) {
                 stickerName: 'BotBY.EF',
                 stickerAuthor: 'GooodBooy'
             });
-            await msg.reply('Background udah dihapus 🎨 dikirim sebagai *stiker* biar transparan!');
+            await msg.reply('Background udah dihapus. Dikirim sebagai *stiker* biar transparan!');
         } catch (err) {
             const status = err.response?.status;
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
             console.error('Error !rmbg:', status, err, errBody);
             if (status === 402) {
-                msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 gambar/bulan');
+                msg.reply('Kuota Clipdrop habis. Gratis hanya 100 gambar/bulan.');
             } else if (status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses 😹 Coba gambar lain yaa');
+                msg.reply('Gambarnya tidak bisa diproses. Coba gambar lain yaa.');
             } else if (status === 401) {
-                msg.reply('API key Clipdrop tidak valid 😹');
+                msg.reply('API key Clipdrop tidak valid.');
             } else {
-                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi nanti`);
+                msg.reply(`Aduh, error (${status || 'unknown'}). Coba lagi nanti.`);
             }
         }
 
@@ -459,7 +459,7 @@ function createMediaCommandsHandler(deps) {
     if (cmd === '!upscale') {
         const apiKey = process.env.CLIPDROP_API_KEY;
         if (!apiKey) {
-            await msg.reply('API key Clipdrop belum diset 😹');
+            await msg.reply('API key Clipdrop belum diset.');
             return true;
         }
 
@@ -471,28 +471,28 @@ function createMediaCommandsHandler(deps) {
                 if (quoted.hasMedia && quoted.type === 'image') {
                     targetMsg = quoted;
                 } else {
-                    await msg.reply('Reply-nya harus gambar yaa 😹');
+                    await msg.reply('Reply-nya harus gambar yaa.');
                     return true;
                 }
             } catch (e) {
-                await msg.reply('Gagal baca pesan yang di-reply 😹');
+                await msg.reply('Gagal baca pesan yang di-reply.');
                 return true;
             }
         } else if (msg.hasMedia && msg.type === 'image') {
             targetMsg = msg;
         } else {
-            await msg.reply('Cara pakai:\n• Kirim foto + caption *!upscale*\n• Atau *reply foto* dengan *!upscale*\n\n_Foto akan diperbesar kualitasnya hingga 4x resolusi asli_ 🔍');
+            await msg.reply('Cara pakai:\n• Kirim foto + caption *!upscale*\n• Atau *reply foto* dengan *!upscale*\n\n_Foto akan diperbesar kualitasnya hingga 4x resolusi asli_');
             return true;
         }
 
         try {
             await safeTyping(msg);
             
-            await msg.reply('Bentar sy upscale dulu fotonya 🤭 sabar yaa...');
+            await msg.reply('Bentar, sy upscale dulu fotonya. Sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
             if (!media) {
-                await msg.reply('Gagal download gambarnya 😹 coba lagi yaa');
+                await msg.reply('Gagal download gambarnya. Coba lagi yaa.');
                 return true;
             }
 
@@ -506,20 +506,20 @@ function createMediaCommandsHandler(deps) {
             const resultBuffer = upscaleGate.result;
 
             const resultMedia = new MessageMedia('image/png', resultBuffer.toString('base64'), 'upscaled.png');
-            await msg.reply('Nih fotonya 🔍 kualitas udah ditingkatkan, rasio tetap sama!');
+            await msg.reply('Nih fotonya, kualitas udah ditingkatkan. Rasio tetap sama!');
             await client.sendMessage(uid, resultMedia);
         } catch (err) {
             const status = err.response?.status;
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
             console.error('Error !upscale:', status, err, errBody);
             if (status === 402) {
-                msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 upscale/bulan');
+                msg.reply('Kuota Clipdrop habis. Gratis hanya 100 upscale/bulan.');
             } else if (status === 400) {
-                msg.reply('Gambarnya tidak bisa diproses 😹\nPastikan:\n• Format JPG/PNG\n• Ukuran maks 16MB\nCoba gambar lain jo');
+                msg.reply('Gambarnya tidak bisa diproses.\nPastikan:\n• Format JPG/PNG\n• Ukuran maks 16MB\nCoba gambar lain.');
             } else if (status === 401) {
-                msg.reply('API key Clipdrop tidak valid 😹');
+                msg.reply('API key Clipdrop tidak valid.');
             } else {
-                msg.reply(`Aduh error sy 😹 (${status || 'unknown'}) coba lagi yaa`);
+                msg.reply(`Aduh, error (${status || 'unknown'}). Coba lagi yaa.`);
             }
         }
 
@@ -547,11 +547,11 @@ function createMediaCommandsHandler(deps) {
 
             const qrMedia = new MessageMedia('image/png', qrBuffer.toString('base64'), 'qrcode.png');
             await client.sendMessage(uid, qrMedia, {
-                caption: `✅ QR Code berhasil dibuat!\n\n_Isi: ${teks.length > 50 ? teks.slice(0, 50) + '...' : teks}_`
+                caption: `QR Code berhasil dibuat!\n\n_Isi: ${teks.length > 50 ? teks.slice(0, 50) + '...' : teks}_`
             });
         } catch (err) {
             console.error('Error !qr:', err);
-            msg.reply('Aduh gagal buat QR code ee 😹 coba lagi jo');
+            msg.reply('Aduh, gagal buat QR code. Coba lagi.');
         }
 
         return true;
@@ -572,7 +572,7 @@ function createMediaCommandsHandler(deps) {
         if (targetMsg) {
             const imgbbKey = process.env.IMGBB_API_KEY;
             if (!imgbbKey) {
-                await msg.reply('API key ImgBB belum diset 😹\nTambah IMGBB_API_KEY di file .env');
+                await msg.reply('API key ImgBB belum diset.\nTambah IMGBB_API_KEY di file .env');
                 return true;
             }
 
@@ -580,11 +580,11 @@ function createMediaCommandsHandler(deps) {
                 const QRCode = require('qrcode');
                 await safeTyping(msg);
                 
-                await msg.reply('Bentar sy upload gambarnya dulu baru buat QR-nya 🤭 sabar jo...');
+                await msg.reply('Bentar, sy upload gambarnya dulu baru buat QR-nya. Sabar...');
 
                 const media = await targetMsg.downloadMedia();
                 if (!media) {
-                    await msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+                    await msg.reply('Gagal download gambarnya. Coba lagi.');
                     return true;
                 }
 
@@ -600,7 +600,7 @@ function createMediaCommandsHandler(deps) {
 
                 const imageUrl = uploadRes.data?.data?.url;
                 if (!imageUrl) {
-                    await msg.reply('Gagal upload gambarnya 😹 coba lagi jo');
+                    await msg.reply('Gagal upload gambarnya. Coba lagi.');
                     return true;
                 }
 
@@ -613,14 +613,14 @@ function createMediaCommandsHandler(deps) {
 
                 const qrMedia = new MessageMedia('image/png', qrBuffer.toString('base64'), 'qrcode.png');
                 await client.sendMessage(uid, qrMedia, {
-                    caption: '✅ *QR Code gambar berhasil dibuat!*\n\nScan QR-nya → gambar langsung muncul 🖼️'
+                    caption: '*QR Code gambar berhasil dibuat!*\n\nScan QR-nya, gambar langsung muncul.'
                 });
             } catch (err) {
                 console.error('Error !qr gambar:', err);
-                msg.reply('Aduh gagal buat QR dari gambar ee 😹 coba lagi jo');
+                msg.reply('Aduh, gagal buat QR dari gambar. Coba lagi.');
             }
         } else {
-            msg.reply('Cara pakai:\n• *!qr [teks/link]* → Buat QR dari teks/link\n• Kirim/reply foto + *!qr* → Buat QR dari gambar 🖼️\n\nContoh:\n!qr https://google.com\n!qr Halo Dunia');
+            msg.reply('Cara pakai:\n• *!qr [teks/link]* → Buat QR dari teks/link\n• Kirim/reply foto + *!qr* → Buat QR dari gambar\n\nContoh:\n!qr https://google.com\n!qr Halo Dunia');
         }
 
         return true;
@@ -635,28 +635,28 @@ function createMediaCommandsHandler(deps) {
                 if (quoted.hasMedia && quoted.type === 'image') {
                     targetMsg = quoted;
                 } else {
-                    await msg.reply('Reply-nya harus gambar ee 😹');
+                    await msg.reply('Reply-nya harus gambar.');
                     return true;
                 }
             } catch (e) {
-                await msg.reply('Gagal baca pesan yang di-reply 😹');
+                await msg.reply('Gagal baca pesan yang di-reply.');
                 return true;
             }
         } else if (msg.hasMedia && msg.type === 'image') {
             targetMsg = msg;
         } else {
-            await msg.reply('Cara pakai:\n• Kirim foto + caption *!kompres*\n• Atau *reply foto* dengan *!kompres*\n\n_Ukuran foto akan dikecilkan_ 📦');
+            await msg.reply('Cara pakai:\n• Kirim foto + caption *!kompres*\n• Atau *reply foto* dengan *!kompres*\n\n_Ukuran foto akan dikecilkan_');
             return true;
         }
 
         try {
             await safeTyping(msg);
             
-            await msg.reply('Bentar sy kompres dulu fotonya ee 🤭 sabar jo...');
+            await msg.reply('Bentar, sy kompres dulu fotonya. Sabar...');
 
             const media = await targetMsg.downloadMedia();
             if (!media) {
-                await msg.reply('Gagal download gambarnya 😹 coba lagi jo');
+                await msg.reply('Gagal download gambarnya. Coba lagi.');
                 return true;
             }
 
@@ -673,14 +673,14 @@ function createMediaCommandsHandler(deps) {
 
             const resultMedia = new MessageMedia('image/jpeg', outputBuffer.toString('base64'), 'compressed.jpg');
             await client.sendMessage(uid, resultMedia, {
-                caption: `📦 *Foto berhasil dikompres!*\n\n` +
+                caption: `*Foto berhasil dikompres!*\n\n` +
                          `Sebelum : ${(inputSize / 1024).toFixed(1)} KB\n` +
                          `Sesudah : ${(outputSize / 1024).toFixed(1)} KB\n` +
-                         `Hemat   : *${saved}%* 🎉`
+                         `Hemat   : *${saved}%*`
             });
         } catch (err) {
             console.error('Error !kompres:', err);
-            msg.reply('Aduh gagal kompres fotonya ee 😹 coba lagi jo');
+            msg.reply('Aduh, gagal kompres fotonya. Coba lagi.');
         }
 
         return true;
