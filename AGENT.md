@@ -120,7 +120,8 @@ bot-wa/
 4. **`mediaCommands.js`**: task berat (`!stiker`, `!storyin`, `!ig`, `!tiktok`, `!yt`,
    `!rmbg`, `!upscale`) sekarang lewat `mediaJobQueue` (concurrency 1) + `mediaRateLimiter`
    (cooldown 20 detik per user per command). Kalau kena cooldown, user diberi tahu
-   "coba lagi dalam N detik".
+   "coba lagi dalam N detik". Ada fallback: bila `jobQueue`/`rateLimiter` tidak di-inject
+   (mis. deploy parsial), command dijalankan langsung seperti perilaku lama.
 5. **`jadwalKuliahStore.js`** (BARU): pemilik `jadwal_kuliah.json`, tulis atomic (jsonStore),
    self-load saat require, ekspor `JADWAL_KULIAH` live yang sama untuk command & scheduler.
 6. **`.gitignore`**: tambah `*.tmp`, `*.bak`, `ig_tmp_*.mp4`, `tt_tmp_*.mp4`, `yt_tmp_*.mp4`.

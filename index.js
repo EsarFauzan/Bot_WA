@@ -558,7 +558,7 @@ process.on('uncaughtException', (err) => {
 });
 
 process.on('unhandledRejection', (reason) => {
-    console.error('❌ Unhandled Rejection:', reason);
+    console.error('❌ Unhandled Rejection:', reason instanceof Error ? reason.stack : reason);
 });
 
 // Bersihkan memory: hapus history & cooldown user yang sudah lama tidak aktif
@@ -597,7 +597,7 @@ client.on('message', async msg => {
         recordCommandActivity();
         await handleCommand(commandMsg);
     } catch (err) {
-        console.error('Error command:', err.message);
+        console.error('Error command:', err.stack || err);
         msg.reply('Command gagal diproses. Coba lagi sebentar.');
     }
 });

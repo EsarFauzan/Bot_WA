@@ -25,6 +25,11 @@ function createMediaCommandsHandler(deps) {
      * @returns {Promise<{blocked: true, remain: number} | {blocked: false, result: any}>}
      */
     async function runHeavy(key, fn) {
+        // Fallback bila jobQueue/rateLimiter belum di-inject (mis. deploy parsial):
+        // jalankan langsung tanpa antrean, sama seperti perilaku sebelum refactor.
+        if (!jobQueue || !rateLimiter) {
+            return { blocked: false, result: await fn() };
+        }
         const remain = rateLimiter.check(key);
         if (remain > 0) return { blocked: true, remain };
         rateLimiter.hit(key);
@@ -57,7 +62,7 @@ function createMediaCommandsHandler(deps) {
                     msg.reply('Aiih gagal nih, coba lagi yaa 😹');
                 }
             } catch (e) {
-                console.error('Error stiker:', e.message);
+                console.error('Error stiker:', e);
                 msg.reply('Gagal sy buat stikernya 😹');
             }
         } else if (msg.hasQuotedMsg) {
@@ -83,7 +88,7 @@ function createMediaCommandsHandler(deps) {
                     msg.reply('Reply-nya bukan foto/GIF/video. Coba reply media dulu 😹');
                 }
             } catch (e) {
-                console.error('Error stiker:', e.message);
+                console.error('Error stiker:', e);
                 msg.reply('Gagal sy buat stikernya 😹');
             }
         } else {
@@ -165,7 +170,7 @@ function createMediaCommandsHandler(deps) {
                 sendMediaAsDocument: false
             });
         } catch (err) {
-            console.error('Error !storyin:', err.message);
+            console.error('Error !storyin:', err);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
 
@@ -217,7 +222,7 @@ function createMediaCommandsHandler(deps) {
                 caption: 'Nih reelsnya 🤭 kualitas HD!'
             });
         } catch (err) {
-            console.error('Error !ig:', err.message);
+            console.error('Error !ig:', err);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
 
@@ -274,7 +279,7 @@ function createMediaCommandsHandler(deps) {
                 sendMediaAsDocument: false
             });
         } catch (err) {
-            console.error('Error !tiktok:', err.message);
+            console.error('Error !tiktok:', err);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
 
@@ -353,7 +358,7 @@ function createMediaCommandsHandler(deps) {
                 });
             }
         } catch (err) {
-            console.error('Error !yt:', err.message);
+            console.error('Error !yt:', err);
             msg.reply('Aduh error sy 😹 coba lagi yaa');
         }
 
@@ -434,7 +439,7 @@ function createMediaCommandsHandler(deps) {
         } catch (err) {
             const status = err.response?.status;
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
-            console.error('Error !rmbg:', status, err.message, errBody);
+            console.error('Error !rmbg:', status, err, errBody);
             if (status === 402) {
                 msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 gambar/bulan');
             } else if (status === 400) {
@@ -504,7 +509,7 @@ function createMediaCommandsHandler(deps) {
         } catch (err) {
             const status = err.response?.status;
             const errBody = err.response?.data ? Buffer.from(err.response.data).toString() : '';
-            console.error('Error !upscale:', status, err.message, errBody);
+            console.error('Error !upscale:', status, err, errBody);
             if (status === 402) {
                 msg.reply('Kuota Clipdrop habis 😹 Gratis hanya 100 upscale/bulan');
             } else if (status === 400) {
@@ -543,7 +548,7 @@ function createMediaCommandsHandler(deps) {
                 caption: `✅ QR Code berhasil dibuat!\n\n_Isi: ${teks.length > 50 ? teks.slice(0, 50) + '...' : teks}_`
             });
         } catch (err) {
-            console.error('Error !qr:', err.message);
+            console.error('Error !qr:', err);
             msg.reply('Aduh gagal buat QR code ee 😹 coba lagi jo');
         }
 
@@ -609,7 +614,7 @@ function createMediaCommandsHandler(deps) {
                     caption: '✅ *QR Code gambar berhasil dibuat!*\n\nScan QR-nya → gambar langsung muncul 🖼️'
                 });
             } catch (err) {
-                console.error('Error !qr gambar:', err.message);
+                console.error('Error !qr gambar:', err);
                 msg.reply('Aduh gagal buat QR dari gambar ee 😹 coba lagi jo');
             }
         } else {
@@ -672,7 +677,7 @@ function createMediaCommandsHandler(deps) {
                          `Hemat   : *${saved}%* 🎉`
             });
         } catch (err) {
-            console.error('Error !kompres:', err.message);
+            console.error('Error !kompres:', err);
             msg.reply('Aduh gagal kompres fotonya ee 😹 coba lagi jo');
         }
 
