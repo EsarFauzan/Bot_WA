@@ -1,3 +1,5 @@
+const { safeTyping } = require('../utils/safeTyping');
+
 function createMediaCommandsHandler(deps) {
     const {
         client,
@@ -46,8 +48,8 @@ function createMediaCommandsHandler(deps) {
     if (cmd === '!stiker') {
         if (msg.hasMedia) {
             try {
-                const chat = await msg.getChat();
-                chat.sendStateTyping();
+                await safeTyping(msg);
+                
                 const stikerGate = await runHeavy(`stiker:${uid}`, () => buatStiker(msg));
                 if (stikerGate.blocked) {
                     await msg.reply(heavyBlockedReply(stikerGate.remain));
@@ -69,8 +71,8 @@ function createMediaCommandsHandler(deps) {
             try {
                 const quoted = await msg.getQuotedMessage();
                 if (quoted.hasMedia) {
-                    const chat = await msg.getChat();
-                    chat.sendStateTyping();
+                    await safeTyping(msg);
+                    
                     const stikerGate = await runHeavy(`stiker:${uid}`, () => buatStiker(quoted));
                     if (stikerGate.blocked) {
                         await msg.reply(heavyBlockedReply(stikerGate.remain));
@@ -131,8 +133,8 @@ function createMediaCommandsHandler(deps) {
                 return true;
             }
 
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Oke bentar sy optimize videonya dulu 🤭 sabar yaa...');
 
             const storyGate = await runHeavy(`storyin:${uid}`, async () => {
@@ -184,8 +186,8 @@ function createMediaCommandsHandler(deps) {
             return true;
         }
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Oke bentar sy download dulu reelsnya 🤭 sabar yaa...');
 
             const igGate = await runHeavy(`ig:${uid}`, async () => {
@@ -241,8 +243,8 @@ function createMediaCommandsHandler(deps) {
             return true;
         }
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Oke bentar sy download dulu TikToknya 🤭 sabar yaa...');
 
             const ttGate = await runHeavy(`tiktok:${uid}`, async () => {
@@ -308,8 +310,8 @@ function createMediaCommandsHandler(deps) {
             return true;
         }
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply(`Oke bentar sy download dulu ${audioOnly ? 'audionya' : 'videonya'} 🤭 sabar yaa...`);
 
             const ytGate = await runHeavy(`yt:${uid}`, async () => {
@@ -400,8 +402,8 @@ function createMediaCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Bentar sy hapus backgroundnya dulu 🤭 sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
@@ -484,8 +486,8 @@ function createMediaCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Bentar sy upscale dulu fotonya 🤭 sabar yaa...');
 
             const media = await targetMsg.downloadMedia();
@@ -533,8 +535,8 @@ function createMediaCommandsHandler(deps) {
 
         try {
             const QRCode = require('qrcode');
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
 
             const qrBuffer = await QRCode.toBuffer(teks, {
                 type: 'png',
@@ -576,8 +578,8 @@ function createMediaCommandsHandler(deps) {
 
             try {
                 const QRCode = require('qrcode');
-                const chat = await msg.getChat();
-                chat.sendStateTyping();
+                await safeTyping(msg);
+                
                 await msg.reply('Bentar sy upload gambarnya dulu baru buat QR-nya 🤭 sabar jo...');
 
                 const media = await targetMsg.downloadMedia();
@@ -648,8 +650,8 @@ function createMediaCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply('Bentar sy kompres dulu fotonya ee 🤭 sabar jo...');
 
             const media = await targetMsg.downloadMedia();

@@ -1,3 +1,5 @@
+const { safeTyping } = require('../utils/safeTyping');
+
 const ZIKIR = {
     pagi: {
         judul: '🌅 ZIKIR PAGI',
@@ -226,8 +228,8 @@ function createUtilityCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             const apiKey = process.env.OPENWEATHER_API_KEY;
             if (!apiKey) {
                 await msg.reply('API key cuaca belum diset 😹');
@@ -300,8 +302,8 @@ function createUtilityCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             const cariRes = await axios.get(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(kota)}`);
             const kotaList = cariRes.data?.data;
             if (!kotaList || kotaList.length === 0) {
@@ -363,8 +365,8 @@ function createUtilityCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
 
             const res = await axios.get(`https://equran.id/api/v2/surat/${surahNomor}`);
             const dataSurah = res.data?.data;
@@ -415,8 +417,8 @@ function createUtilityCommandsHandler(deps) {
             return true;
         }
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
 
             const [userRes, repoRes] = await Promise.all([
                 axios.get(`https://api.github.com/users/${username}`),
@@ -475,8 +477,8 @@ function createUtilityCommandsHandler(deps) {
         }
 
         try {
-            const chat = await msg.getChat();
-            chat.sendStateTyping();
+            await safeTyping(msg);
+            
             await msg.reply(`🔍 Bentar sy cari *${query}* dulu 🤭 sabar jo...`);
 
             const res = await axios.get(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&limit=5&sfw=true`, {

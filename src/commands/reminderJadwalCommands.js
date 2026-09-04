@@ -1,4 +1,6 @@
-﻿function dayToIndex(value) {
+﻿const { safeTyping } = require('../utils/safeTyping');
+
+function dayToIndex(value) {
     const raw = String(value || '').trim().toLowerCase();
     const mapping = {
         minggu: 0,
@@ -100,8 +102,8 @@ function createReminderJadwalCommandsHandler(deps) {
             }
 
             try {
-                const chat = await msg.getChat();
-                chat.sendStateTyping();
+                await safeTyping(msg);
+                
                 const cariRes = await axios.get(`https://api.myquran.com/v2/sholat/kota/cari/${encodeURIComponent(kotaNama)}`);
                 const kotaList = cariRes.data?.data;
                 if (!kotaList || kotaList.length === 0) {
